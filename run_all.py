@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-ENV = {**sys.environ, "PYTHONIOENCODING": "utf-8"}
+ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
 RUNNERS: list[tuple[str, list[str]]] = [
     ("synthetic (ED-GB)",  [str(ROOT / "studies/runner/synthetic/run.py"),         "method=ed_gb", "+bank=ed_gb"]),
