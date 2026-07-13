@@ -83,3 +83,6 @@ legacy/
 
 # Runtime experiment output
 output/
+
+# But track the source package
+!studies/output/
