@@ -1,0 +1,5 @@
+type: cifar_lt
+seed: 13
+imbalance_ratio: 50
+root: ./data/cifar
+batch_size: 128

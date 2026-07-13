@@ -1,0 +1,16 @@
+defaults:
+  - data: synthetic
+  - model: classifier
+  - method: baseline
+  - training: default
+  - output: default
+  - _self_
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job_logging:
+    disabled: true
+  hydra_logging:
+    disabled: true

@@ -1,0 +1,13 @@
+# Stress test preset.
+# Edge cases: zero budget, full budget, extreme imbalance, no warmup.
+experiment_name: stress_test
+description: "Stress tests for robustness under edge conditions"
+tests:
+  - name: zero_retrieval_budget
+    method.retrieval_budget: 0
+  - name: full_retrieval_budget
+    method.retrieval_budget: 32
+  - name: extreme_imbalance
+    data.imbalance_ratio: 500
+  - name: no_warmup
+    method.warmup_steps: 0

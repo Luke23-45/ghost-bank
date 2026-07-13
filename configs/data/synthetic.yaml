@@ -1,0 +1,6 @@
+type: synthetic
+seed: 13
+imbalance_ratio: 100
+majority_train: 2000
+test_per_class: 500
+batch_size: 32

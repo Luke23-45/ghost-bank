@@ -1,0 +1,4 @@
+name: ed_gb
+capacity_per_class: 200
+seed: 42
+exclude_classes: [0]

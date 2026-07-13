@@ -1,0 +1,10 @@
+# Baseline comparison matrix preset.
+# Runs all methods under equal budget for head-to-head comparison.
+experiment_name: baseline_matrix
+description: "Multi-method comparison under equal compute budget"
+methods:
+  - baseline
+  - static_bank
+  - ed_gb
+  - focal_loss
+  - class_balanced

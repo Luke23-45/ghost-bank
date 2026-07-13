@@ -1,0 +1,3 @@
+name: ed_gb
+retrieval_budget: 8
+warmup_steps: 0

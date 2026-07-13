@@ -79,5 +79,7 @@ desktop.ini
 
 
 
-empirical
-verification
+legacy/
+
+# Runtime experiment output
+output/

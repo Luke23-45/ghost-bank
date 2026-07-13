@@ -1,0 +1,4 @@
+learning_rate: 0.05
+optimizer: sgd
+max_epochs: 10
+log_every_n_steps: 10
