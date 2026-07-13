@@ -2,6 +2,7 @@
 # Runs all methods under equal budget for head-to-head comparison.
 experiment_name: baseline_matrix
 description: "Multi-method comparison under equal compute budget"
+seeds: [13, 42, 73]
 methods:
   - baseline
   - static_bank

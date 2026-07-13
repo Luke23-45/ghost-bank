@@ -81,6 +81,10 @@ def create_datamodule(cfg: DictConfig) -> SyntheticDataModule:
             majority_train=dc.majority_train,
             test_per_class=dc.test_per_class,
             batch_size=dc.batch_size,
+            num_workers=dc.get("num_workers", 0),
+            pin_memory=dc.get("pin_memory", False),
+            persistent_workers=dc.get("persistent_workers", False),
+            prefetch_factor=dc.get("prefetch_factor", 2),
         )
         return SyntheticDataModule(config)
     raise ValueError(f"Unsupported data type: {dc.type}")
@@ -154,6 +158,7 @@ def create_pl_module(
     cfg: DictConfig,
     bank: AbstractGhostBank | None = None,
     num_classes: int | None = None,
+    minority_classes: list[int] | None = None,
 ) -> GhostBankLightningModule:
     """Create a PL LightningModule from components."""
     return GhostBankLightningModule(
@@ -163,6 +168,7 @@ def create_pl_module(
         learning_rate=cfg.training.learning_rate,
         num_classes=num_classes,
         optimizer_name=cfg.training.get("optimizer", "sgd"),
+        minority_classes=minority_classes,
     )
 
 
@@ -171,15 +177,18 @@ def create_pl_module(
 # ---------------------------------------------------------------------------
 
 
-def run_experiment(
+def _run_single_seed(
     cfg: DictConfig,
-    output_manager: OutputManager,
+    output_root: str,
+    seed: int,
 ) -> dict:
-    """Run a single experiment end-to-end.
+    """Run one seed of an experiment and return metrics.
 
-    Expects ``output_manager`` to already be initialized with config saved.
+    Does **not** touch the ``OutputManager`` state machine — all
+    per-seed bookkeeping is the caller's responsibility.
     """
-    pl.seed_everything(cfg.data.get("seed", 13))
+    cfg.data.seed = seed
+    pl.seed_everything(seed)
 
     datamodule = create_datamodule(cfg)
     datamodule.setup("fit")
@@ -191,7 +200,13 @@ def run_experiment(
     model = create_model(cfg, num_classes=num_classes)
     bank = create_bank(cfg, num_classes=num_classes)
     method = create_method(cfg, class_counts=class_counts)
-    pl_module = create_pl_module(model, method, cfg, bank=bank, num_classes=num_classes)
+    minority_classes = cfg.data.get("minority_classes", None)
+    pl_module = create_pl_module(
+        model, method, cfg,
+        bank=bank,
+        num_classes=num_classes,
+        minority_classes=minority_classes,
+    )
 
     callbacks: list[pl.Callback] = []
     if cfg.training.get("enable_progress_bar", True):
@@ -207,8 +222,8 @@ def run_experiment(
         callbacks.append(ExposureTrackerCallback())
 
     csv_logger = CSVLogger(
-        save_dir=str(output_manager.root),
-        name="training_logs",
+        save_dir=output_root,
+        name=f"seed_{seed}",
         version="",
     )
 
@@ -225,22 +240,77 @@ def run_experiment(
         enable_checkpointing=False,
     )
 
+    trainer.fit(pl_module, datamodule=datamodule)
+    test_results = trainer.test(pl_module, datamodule=datamodule)
+
+    metrics: dict = {"method": cfg.method.name, "seed": seed}
+    if test_results:
+        for key, val in test_results[0].items():
+            metrics[str(key)] = val
+
+    return metrics
+
+
+def _aggregate_metrics(all_metrics: list[dict]) -> dict:
+    """Compute mean ± std for every numeric metric across seeds."""
+    if not all_metrics:
+        return {}
+
+    aggregated: dict = {
+        "method": all_metrics[0]["method"],
+        "num_seeds": len(all_metrics),
+    }
+
+    numeric_keys: set[str] = set()
+    for m in all_metrics:
+        for k, v in m.items():
+            if k not in ("method", "seed") and isinstance(v, (int, float)):
+                numeric_keys.add(k)
+
+    for key in sorted(numeric_keys):
+        values = [m[key] for m in all_metrics if key in m]
+        if values:
+            mean = sum(values) / len(values)
+            std = (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
+            aggregated[f"{key}_mean"] = mean
+            aggregated[f"{key}_std"] = std
+
+    return aggregated
+
+
+def run_experiment(
+    cfg: DictConfig,
+    output_manager: OutputManager,
+) -> dict:
+    """Run an experiment over all configured seeds and return aggregated metrics.
+
+    ``output_manager`` must already be initialised with config saved.
+    """
+    seeds: list[int] = cfg.runner.get("seeds", [13])
+    if not seeds:
+        raise ValueError(
+            f"runner.seeds is empty for method '{cfg.method.name}'. "
+            "At least one seed is required."
+        )
+
+    all_metrics: list[dict] = []
+    for seed in seeds:
+        metrics = _run_single_seed(cfg, str(output_manager.root), seed)
+        all_metrics.append(metrics)
+
+    aggregated = _aggregate_metrics(all_metrics)
+
     try:
-        trainer.fit(pl_module, datamodule=datamodule)
-        test_results = trainer.test(pl_module, datamodule=datamodule)
+        for m in all_metrics:
+            output_manager.write_metrics(m, f"seed_{m['seed']}_metrics.json")
 
-        metrics: dict = {
-            "method": cfg.method.name,
-            "seed": cfg.data.get("seed", 13),
-        }
-        if test_results:
-            metrics["test_acc"] = test_results[0].get("test/acc", 0.0)
-
-        output_manager.write_metrics(metrics)
+        output_manager.write_metrics(aggregated, "aggregated_metrics.csv")
         output_manager.finalize(
             {
-                "test_metrics": test_results,
+                "aggregated": aggregated,
+                "per_seed_metrics": all_metrics,
                 "method": cfg.method.name,
+                "num_seeds": len(seeds),
             }
         )
         output_manager.complete()
@@ -248,4 +318,4 @@ def run_experiment(
         output_manager.fail()
         raise
 
-    return metrics
+    return aggregated

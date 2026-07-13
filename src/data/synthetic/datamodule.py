@@ -24,21 +24,32 @@ class SyntheticDataModule(BaseDataModule):
         self.train_dataset = GaussianDataset(train_data)
         self.test_dataset = GaussianDataset(test_data)
 
+    def _dataloader_kwargs(self) -> dict:
+        kwargs: dict = {
+            "batch_size": self.config.batch_size,
+            "num_workers": self.config.num_workers,
+            "pin_memory": self.config.pin_memory,
+        }
+        if self.config.num_workers > 0:
+            kwargs["persistent_workers"] = self.config.persistent_workers
+            kwargs["prefetch_factor"] = self.config.prefetch_factor
+        return kwargs
+
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             self.train_dataset,
-            batch_size=self.config.batch_size,
             shuffle=True,
+            **self._dataloader_kwargs(),
         )
 
     def val_dataloader(self) -> DataLoader:
         return DataLoader(
             self.test_dataset,
-            batch_size=self.config.batch_size,
+            **self._dataloader_kwargs(),
         )
 
     def test_dataloader(self) -> DataLoader:
         return DataLoader(
             self.test_dataset,
-            batch_size=self.config.batch_size,
+            **self._dataloader_kwargs(),
         )

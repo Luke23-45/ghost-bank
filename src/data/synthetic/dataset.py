@@ -42,29 +42,19 @@ def generate_gaussian_data(
 class GaussianDataset(BaseDataset):
     def __init__(self, data: list[Example]) -> None:
         super().__init__()
-        self._data = data
-        self._class_counts = self._compute_class_counts()
-
-    def _compute_class_counts(self) -> list[int]:
-        if not self._data:
-            return []
-        num = max(y for _, y in self._data) + 1
-        counts = [0] * num
-        for _, y in self._data:
-            counts[y] += 1
-        return counts
+        self._xs = torch.tensor([ex[0] for ex in data], dtype=torch.float32)
+        self._ys = torch.tensor([ex[1] for ex in data], dtype=torch.long)
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
-        x, y = self._data[index]
-        return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.long)
+        return self._xs[index], self._ys[index]
 
     def __len__(self) -> int:
-        return len(self._data)
+        return len(self._ys)
 
     @property
     def class_counts(self) -> list[int]:
-        return list(self._class_counts)
+        return torch.bincount(self._ys, minlength=self.num_classes).tolist()
 
     @property
     def num_classes(self) -> int:
-        return len(self._class_counts)
+        return int(self._ys.max().item()) + 1 if len(self._ys) > 0 else 0

@@ -2,3 +2,4 @@
 # Run: python studies/runner/synthetic/run.py
 experiment_name: synthetic
 description: "Controlled synthetic experiment with Gaussian data"
+seeds: [13, 42, 73]

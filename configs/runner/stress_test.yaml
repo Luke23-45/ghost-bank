@@ -2,6 +2,7 @@
 # Edge cases: zero budget, full budget, extreme imbalance, no warmup.
 experiment_name: stress_test
 description: "Stress tests for robustness under edge conditions"
+seeds: [13, 42, 73]
 tests:
   - name: zero_retrieval_budget
     method.retrieval_budget: 0
