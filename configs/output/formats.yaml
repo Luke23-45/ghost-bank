@@ -1,0 +1,4 @@
+# Output format toggles
+csv: true
+jsonl: true
+markdown: false

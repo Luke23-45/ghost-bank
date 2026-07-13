@@ -1,0 +1,5 @@
+# Default output configuration
+base_dir: output
+formats:
+  - csv
+  - jsonl

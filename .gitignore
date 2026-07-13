@@ -84,5 +84,6 @@ legacy/
 # Runtime experiment output
 output/
 
-# But track the source package
+# But track the source package and configs
 !studies/output/
+!configs/output/
