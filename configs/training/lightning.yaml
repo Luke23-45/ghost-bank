@@ -1,3 +1,7 @@
+# PyTorch Lightning Trainer settings.
+# These override training/default.yaml when +training=lightning is used.
 accelerator: auto
 devices: 1
 precision: 32
+gradient_clip_val: null         # max gradient norm (null = disabled)
+progress_refresh_rate: 1        # batches between progress bar updates
