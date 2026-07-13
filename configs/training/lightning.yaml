@@ -4,4 +4,5 @@ accelerator: auto
 devices: 1
 precision: 32
 gradient_clip_val: null         # max gradient norm (null = disabled)
+enable_progress_bar: false      # set false to suppress all progress bars
 progress_refresh_rate: 1        # batches between progress bar updates

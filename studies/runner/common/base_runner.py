@@ -193,12 +193,21 @@ def run_experiment(
     method = create_method(cfg, class_counts=class_counts)
     pl_module = create_pl_module(model, method, cfg, bank=bank, num_classes=num_classes)
 
-    callbacks: list[pl.Callback] = [
-        GhostBankProgressBar(
-            refresh_rate=cfg.training.get("progress_refresh_rate", 1),
-            leave=True,
-        ),
-    ]
+    callbacks: list[pl.Callback] = []
+    if cfg.training.get("enable_progress_bar", True):
+        callbacks.append(
+            GhostBankProgressBar(
+                refresh_rate=cfg.training.get("progress_refresh_rate", 1),
+                leave=True,
+            )
+        )
+    else:
+        callbacks.append(
+            GhostBankProgressBar(
+                refresh_rate=0,
+                leave=False,
+            )
+        )
     if bank is not None:
         callbacks.append(DebtCurveLogger())
     if pl_module.exposure_tracker is not None:
@@ -217,6 +226,7 @@ def run_experiment(
         max_epochs=cfg.training.max_epochs,
         log_every_n_steps=cfg.training.log_every_n_steps,
         gradient_clip_val=cfg.training.get("gradient_clip_val", None),
+        enable_progress_bar=cfg.training.get("enable_progress_bar", True),
         callbacks=callbacks,
         logger=[csv_logger],
         enable_checkpointing=False,
