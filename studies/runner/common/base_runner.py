@@ -201,13 +201,6 @@ def run_experiment(
                 leave=True,
             )
         )
-    else:
-        callbacks.append(
-            GhostBankProgressBar(
-                refresh_rate=0,
-                leave=False,
-            )
-        )
     if bank is not None:
         callbacks.append(DebtCurveLogger())
     if pl_module.exposure_tracker is not None:
