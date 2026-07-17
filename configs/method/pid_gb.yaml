@@ -1,0 +1,12 @@
+name: pid_gb
+retrieval_budget: 8
+warmup_steps: 0
+K_p: 1.0
+K_i: 0.1
+K_d: 0.5
+pid_decay: 0.99
+pid_smooth: 0.9
+temperature: 1.0
+bank_probe_size: 16
+eval_absent_classes: true
+use_class_weights: false

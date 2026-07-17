@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 from src.bank.core.base import AbstractGhostBank
 from src.bank.core.exposure import ExposureTracker
+from src.bank.core.pid_controller import PIDController
 from src.methods.base import Method
 from src.utils.logging import get_logger
 from src.utils.metrics import balanced_accuracy, macro_f1, minority_recall
@@ -45,6 +46,26 @@ class GhostBankLightningModule(pl.LightningModule):
                 LOGGER.warning(
                     "Method %s requires exposure tracker but num_classes is None; "
                     "exposure tracking disabled.",
+                    type(method).__name__,
+                )
+
+        self.pid_controller: PIDController | None = None
+        if getattr(method, "needs_pid_controller", False):
+            if num_classes is not None:
+                self.pid_controller = PIDController(
+                    num_classes,
+                    K_p=getattr(method, "K_p", 1.0),
+                    K_i=getattr(method, "K_i", 0.1),
+                    K_d=getattr(method, "K_d", 0.5),
+                    decay=getattr(method, "pid_decay", 0.99),
+                    smooth=getattr(method, "pid_smooth", 0.9),
+                    temperature=getattr(method, "temperature", 1.0),
+                    class_weights=getattr(method, "class_weights", None),
+                )
+            else:
+                LOGGER.warning(
+                    "Method %s requires PID controller but num_classes is None; "
+                    "PID control disabled.",
                     type(method).__name__,
                 )
 

@@ -7,5 +7,6 @@ methods:
   - baseline
   - static_bank
   - ed_gb
+  - pid_gb
   - focal_loss
   - class_balanced

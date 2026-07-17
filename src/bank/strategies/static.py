@@ -30,6 +30,8 @@ class StaticReplayBank(AbstractGhostBank):
         self._rng = random.Random(seed)
 
     def store(self, examples: list) -> None:
+        if getattr(self, "_frozen", False):
+            return
         for example in examples:
             _, y = example
             cid = _to_int(y)

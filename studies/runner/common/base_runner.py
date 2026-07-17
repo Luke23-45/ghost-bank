@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from src.bank.core.base import AbstractGhostBank
 from src.bank.strategies import StaticReplayBank, ExposureDebtGhostBank
+from src.bank.core.pid_controller import PIDController
 from src.data.synthetic import SyntheticDataModule, SyntheticConfig
 from src.loss import FocalLoss, ClassBalancedLoss
 from src.methods import (
@@ -17,11 +18,13 @@ from src.methods import (
     EDGBMethod,
     FocalLossMethod,
     Method,
+    PIDGBMethod,
     StaticBankMethod,
 )
 from src.models import MLPClassifier
 from src.training import (
     DebtCurveLogger,
+    DistributionShiftCallback,
     ExposureTrackerCallback,
     GhostBankLightningModule,
     GhostBankProgressBar,
@@ -112,6 +115,8 @@ def create_bank(cfg: DictConfig, num_classes: int) -> AbstractGhostBank | None:
         return StaticReplayBank(num_classes, bc.capacity_per_class, bc.seed, exclude_classes=exclude)
     if bc.name == "ed_gb":
         return ExposureDebtGhostBank(num_classes, bc.capacity_per_class, bc.seed, exclude_classes=exclude)
+    if bc.name == "pid_gb":
+        return ExposureDebtGhostBank(num_classes, bc.capacity_per_class, bc.seed, exclude_classes=exclude)
     return None
 
 
@@ -137,6 +142,31 @@ def create_method(
             retrieval_budget=mc.retrieval_budget,
             warmup_steps=mc.get("warmup_steps", 0),
         )
+
+    if name == "pid_gb":
+        method = PIDGBMethod(
+            retrieval_budget=mc.retrieval_budget,
+            warmup_steps=mc.get("warmup_steps", 0),
+            K_p=mc.get("K_p", 1.0),
+            K_i=mc.get("K_i", 0.1),
+            K_d=mc.get("K_d", 0.5),
+            pid_decay=mc.get("pid_decay", 0.99),
+            pid_smooth=mc.get("pid_smooth", 0.9),
+            temperature=mc.get("temperature", 1.0),
+            bank_probe_size=mc.get("bank_probe_size", 16),
+            eval_absent_classes=mc.get("eval_absent_classes", True),
+            use_class_weights=mc.get("use_class_weights", False),
+        )
+        # Compute per-class weights from class counts
+        if class_counts is not None and method.use_class_weights:
+            max_count = max(class_counts)
+            method.class_weights = [
+                (max_count / c) ** 0.5 if c > 0 else 1.0
+                for c in class_counts
+            ]
+        else:
+            method.class_weights = [1.0] * len(class_counts) if class_counts else []
+        return method
 
     if name == "focal_loss":
         return FocalLossMethod(FocalLoss(alpha=mc.alpha, gamma=mc.gamma))
@@ -220,6 +250,20 @@ def _run_single_seed(
         callbacks.append(DebtCurveLogger())
     if pl_module.exposure_tracker is not None:
         callbacks.append(ExposureTrackerCallback())
+
+    shift_epoch = cfg.runner.get("shift_epoch", None)
+    if shift_epoch is not None:
+        swap = cfg.runner.get("swap_classes", [0, 2])
+        freeze = cfg.runner.get("freeze_bank", False)
+        shift_test = cfg.runner.get("shift_test_dataset", False)
+        callbacks.append(
+            DistributionShiftCallback(
+                shift_epoch=shift_epoch,
+                swap_classes=tuple(swap),
+                freeze_bank=freeze,
+                shift_test_dataset=shift_test,
+            )
+        )
 
     csv_logger = CSVLogger(
         save_dir=output_root,

@@ -1,7 +1,7 @@
-"""Baseline matrix runner — multi-method comparison under equal budget.
+"""Distribution shift experiment — compare method recovery after label swap.
 
 Usage:
-    python studies/runner/baseline_matrix/run.py
+    python studies/runner/shift_experiment/run.py
 """
 
 import sys
@@ -19,11 +19,11 @@ from omegaconf import DictConfig
 BANK_MAP = {"static_bank": "static", "ed_gb": "ed_gb", "pid_gb": "pid_gb"}
 
 
-class BaselineMatrixRunner(AbstractRunner):
+class ShiftExperimentRunner(AbstractRunner):
     def compose_configs(self) -> list[tuple[DictConfig, str | None]]:
         with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
             base_cfg = compose(
-                "config", overrides=self.overrides + ["+runner=baseline"]
+                "config", overrides=self.overrides + ["+runner=shift"]
             )
 
         pairs: list[tuple[DictConfig, str | None]] = []
@@ -31,15 +31,16 @@ class BaselineMatrixRunner(AbstractRunner):
             method_overrides = [f"method={method_name}"]
             if method_name in BANK_MAP:
                 method_overrides.append(f"+bank={BANK_MAP[method_name]}")
+            method_overrides.append("bank.exclude_classes=[]")
             with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
                 cfg = compose(
                     "config",
-                    overrides=self.overrides + ["+runner=baseline"] + method_overrides,
+                    overrides=self.overrides + ["+runner=shift"] + method_overrides,
                 )
             pairs.append((cfg, method_name))
         return pairs
 
 
 if __name__ == "__main__":
-    runner = BaselineMatrixRunner()
+    runner = ShiftExperimentRunner()
     runner.run()

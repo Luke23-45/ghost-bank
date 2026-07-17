@@ -25,6 +25,18 @@ class AbstractGhostBank(ABC):
         """Retrieve up to ``budget`` examples from the bank."""
         ...
 
+    def freeze(self) -> None:
+        """Prevent further storage.  Query still works."""
+        self._frozen = True
+
+    def unfreeze(self) -> None:
+        """Re-enable storage after a freeze."""
+        self._frozen = False
+
+    @property
+    def frozen(self) -> bool:
+        return getattr(self, "_frozen", False)
+
     @abstractmethod
     def state_dict(self) -> dict:
         """Return serializable state for checkpointing."""

@@ -39,6 +39,8 @@ class ExposureDebtGhostBank(AbstractGhostBank):
         self._last_allocation: list[int] = []
 
     def store(self, examples: list) -> None:
+        if getattr(self, "_frozen", False):
+            return
         for example in examples:
             _, y = example
             cid = _to_int(y)
@@ -51,8 +53,13 @@ class ExposureDebtGhostBank(AbstractGhostBank):
         *,
         exposure: Sequence[int] | None = None,
         target_per_class: Sequence[float] | None = None,
+        debt: Sequence[float] | None = None,
+        temperature: float = 1.0,
     ) -> list:
-        if exposure is not None and target_per_class is not None:
+        if debt is not None:
+            debt = [d if c in self._bank else 0.0 for c, d in enumerate(debt)]
+            allocation = allocate_by_debt(debt, budget, temperature=temperature)
+        elif exposure is not None and target_per_class is not None:
             debt = compute_debt(exposure, target_per_class)
             allocation = allocate_by_debt(debt, budget)
         else:

@@ -46,3 +46,9 @@ Run in order. Each phase gates the next.
 | 4 | Stress Test | All 4 edge cases pass without crash/NaN | Any test fails | 32s | Final gate |
 
 **Total duration:** ~10 min. Stop at any NO-GO and fix before proceeding.
+
+
+## GO And No-Go
+python studies/runner/baseline_matrix/run.py
+python studies/runner/shift_experiment/run.py
+​
