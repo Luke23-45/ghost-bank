@@ -8,6 +8,13 @@ enable_progress_bar: false      # set false to suppress all progress bars
 enable_model_summary: true      # set false to suppress model summary table
 progress_refresh_rate: 1        # batches between progress bar updates
 
+# Early stopping ---------------------------------------------
+early_stopping:
+  monitor: val/acc
+  mode: max
+  patience: 5
+  min_delta: 0.001
+
 # Logging / verbosity ----------------------------------------
 logging:
   level: info

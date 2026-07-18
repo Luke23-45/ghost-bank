@@ -9,6 +9,15 @@ gradient_clip_val: null
 enable_progress_bar: true
 progress_refresh_rate: 1
 
+# Early stopping --------------------------------------------------------------
+# Stops training early when the monitored metric plateaus.
+early_stopping:
+  monitor: val/acc           # metric to track (logged via self.log)
+  mode: max                  # max = higher is better, min = lower
+  patience: 5                # epochs with no improvement before stopping
+  min_delta: 0.001           # minimum absolute change to count as improvement
+  # stopping_threshold: 0.99 # optional: stop immediately if this value is reached
+
 # Logging / verbosity control ------------------------------------------------
 #   level:  debug | info | warning | error | critical | none
 #   When level >= warning, progress bars, model summaries, and PL banners

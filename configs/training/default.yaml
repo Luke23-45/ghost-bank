@@ -6,6 +6,13 @@ gradient_clip_val: null
 enable_progress_bar: false
 progress_refresh_rate: 1
 
+# Early stopping --------------------------------------------------------------
+early_stopping:
+  monitor: val/acc
+  mode: max
+  patience: 5
+  min_delta: 0.001
+
 # Logging / verbosity control ------------------------------------------------
 #   level:  debug | info | warning | error | critical | none
 #   When level >= warning, progress bars, model summaries, and PL banners

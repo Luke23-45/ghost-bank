@@ -9,6 +9,7 @@ import pytorch_lightning as pl
 import torch
 from hydra import compose, initialize_config_dir
 from omegaconf import DictConfig, OmegaConf
+from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import CSVLogger
 
 from src.bank.core.base import AbstractGhostBank
@@ -17,6 +18,7 @@ from src.bank.core.pid_controller import PIDController
 from src.methods import Method
 from src.models import ResNet
 from src.training import (
+    ConsoleEpochCallback,
     GhostBankLightningModule,
     GhostBankProgressBar,
     DebtCurveLogger,
@@ -187,7 +189,11 @@ class CIFAR100Runner(AbstractRunner):
                 show_progress = False
 
             callbacks: list[pl.Callback] = []
-            if show_progress:
+            if _quiet:
+                callbacks.append(
+                    ConsoleEpochCallback(prefix=f"seed={seed} task={task_id}")
+                )
+            elif show_progress:
                 callbacks.append(
                     GhostBankProgressBar(
                         refresh_rate=cfg.training.get("progress_refresh_rate", 1),
@@ -198,6 +204,20 @@ class CIFAR100Runner(AbstractRunner):
                 callbacks.append(DebtCurveLogger())
             if pl_module.exposure_tracker is not None:
                 callbacks.append(ExposureTrackerCallback())
+
+            # Early stopping --------------------------------------------------
+            es_cfg = cfg.training.get("early_stopping")
+            if es_cfg is not None:
+                callbacks.append(
+                    EarlyStopping(
+                        monitor=es_cfg.get("monitor", "val/acc"),
+                        mode=es_cfg.get("mode", "max"),
+                        patience=es_cfg.get("patience", 5),
+                        min_delta=es_cfg.get("min_delta", 0.001),
+                        stopping_threshold=es_cfg.get("stopping_threshold", None),
+                        verbose=False,
+                    )
+                )
 
             csv_logger = CSVLogger(
                 save_dir=output_root,
@@ -219,7 +239,12 @@ class CIFAR100Runner(AbstractRunner):
                 enable_checkpointing=False,
             )
 
-            trainer.fit(pl_module, train_dataloaders=train_loader)
+            val_loader = dm.get_task_test_loader(task_id)
+            trainer.fit(
+                pl_module,
+                train_dataloaders=train_loader,
+                val_dataloaders=val_loader,
+            )
 
             with torch.no_grad():
                 model.eval()

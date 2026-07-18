@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import TQDMProgressBar
 
@@ -118,3 +120,33 @@ class GhostBankProgressBar(TQDMProgressBar):
         bar = super().init_test_tqdm()
         bar.set_description("test")
         return bar
+
+
+class ConsoleEpochCallback(pl.Callback):
+    """Prints a single concise line per epoch.
+
+    Replaces the per-batch TQDM bar with a lightweight status line
+    so cloud consoles stay clean while still showing progress.
+    """
+
+    def __init__(self, prefix: str = "") -> None:
+        super().__init__()
+        self._prefix = f"{prefix} " if prefix else ""
+
+    def on_train_epoch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+    ) -> None:
+        epoch = trainer.current_epoch
+        max_epochs = trainer.max_epochs or "?"
+        loss = trainer.callback_metrics.get("train/loss")
+        loss_str = f" | loss={loss:.4f}" if loss is not None else ""
+        sys.stdout.write(
+            f"\r{self._prefix}epoch {epoch + 1}/{max_epochs}{loss_str}  "
+        )
+        sys.stdout.flush()
+
+    def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        sys.stdout.write("\n")
+        sys.stdout.flush()

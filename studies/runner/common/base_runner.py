@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 import pytorch_lightning as pl
 from omegaconf import DictConfig, OmegaConf
+from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import CSVLogger
 from tqdm import tqdm
 
@@ -25,6 +26,7 @@ from src.methods import (
 )
 from src.models import MLPClassifier, ResNet, ResNetConfig
 from src.training import (
+    ConsoleEpochCallback,
     DebtCurveLogger,
     DistributionShiftCallback,
     ExposureTrackerCallback,
@@ -298,7 +300,9 @@ def _run_single_seed(
         show_progress = False
 
     callbacks: list[pl.Callback] = []
-    if show_progress:
+    if _quiet:
+        callbacks.append(ConsoleEpochCallback(prefix=f"seed={seed}"))
+    elif show_progress:
         callbacks.append(
             GhostBankProgressBar(
                 refresh_rate=cfg.training.get("progress_refresh_rate", 1),
@@ -309,6 +313,20 @@ def _run_single_seed(
         callbacks.append(DebtCurveLogger())
     if pl_module.exposure_tracker is not None:
         callbacks.append(ExposureTrackerCallback())
+
+    # Early stopping ----------------------------------------------------------
+    es_cfg = cfg.training.get("early_stopping")
+    if es_cfg is not None:
+        callbacks.append(
+            EarlyStopping(
+                monitor=es_cfg.get("monitor", "val/acc"),
+                mode=es_cfg.get("mode", "max"),
+                patience=es_cfg.get("patience", 5),
+                min_delta=es_cfg.get("min_delta", 0.001),
+                stopping_threshold=es_cfg.get("stopping_threshold", None),
+                verbose=False,
+            )
+        )
 
     shift_epoch = cfg.runner.get("shift_epoch", None)
     if shift_epoch is not None:
