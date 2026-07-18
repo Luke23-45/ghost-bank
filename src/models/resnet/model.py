@@ -88,7 +88,7 @@ class ResNet(BaseModel):
             if old_bias is not None:
                 new_fc.bias.data[:old_out] = old_bias
 
-            nn.init.xavier_uniform_(new_fc.weight.data[old_out:])
+            nn.init.normal_(new_fc.weight.data[old_out:], mean=0.0, std=0.001)
             if new_fc.bias is not None:
                 new_fc.bias.data[old_out:].zero_()
 
