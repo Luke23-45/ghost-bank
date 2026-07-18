@@ -52,3 +52,10 @@ Run in order. Each phase gates the next.
 python studies/runner/baseline_matrix/run.py
 python studies/runner/shift_experiment/run.py
 ​
+
+=========
+
+
+
+python -m src.data.cifar100.ingest
+python studies/runner/cifar100/run.py

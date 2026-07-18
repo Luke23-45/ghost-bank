@@ -8,8 +8,10 @@ from pytorch_lightning.loggers import CSVLogger
 from tqdm import tqdm
 
 from src.bank.core.base import AbstractGhostBank
-from src.bank.strategies import StaticReplayBank, ExposureDebtGhostBank
+from src.bank.core.exposure import ExposureTracker
 from src.bank.core.pid_controller import PIDController
+from src.bank.strategies import StaticReplayBank, ExposureDebtGhostBank
+from src.data.cifar100 import CIFAR100DataModule, CIFAR100Config
 from src.data.synthetic import SyntheticDataModule, SyntheticConfig
 from src.loss import FocalLoss, ClassBalancedLoss
 from src.methods import (
@@ -21,7 +23,7 @@ from src.methods import (
     PIDGBMethod,
     StaticBankMethod,
 )
-from src.models import MLPClassifier
+from src.models import MLPClassifier, ResNet, ResNetConfig
 from src.training import (
     DebtCurveLogger,
     DistributionShiftCallback,
@@ -74,7 +76,7 @@ class AbstractRunner(ABC):
 # ---------------------------------------------------------------------------
 
 
-def create_datamodule(cfg: DictConfig) -> SyntheticDataModule:
+def create_datamodule(cfg: DictConfig) -> SyntheticDataModule | CIFAR100DataModule:
     """Create a data module from a Hydra config."""
     dc = cfg.data
     if dc.type == "synthetic":
@@ -90,10 +92,25 @@ def create_datamodule(cfg: DictConfig) -> SyntheticDataModule:
             prefetch_factor=dc.get("prefetch_factor", 2),
         )
         return SyntheticDataModule(config)
+    if dc.type == "cifar100":
+        config = CIFAR100Config(
+            root=dc.root,
+            seed=dc.seed,
+            batch_size=dc.batch_size,
+            num_workers=dc.get("num_workers", 4),
+            pin_memory=dc.get("pin_memory", True),
+            persistent_workers=dc.get("persistent_workers", True),
+            prefetch_factor=dc.get("prefetch_factor", 2),
+            num_tasks=dc.get("num_tasks", 10),
+            classes_per_task=dc.get("classes_per_task", 10),
+            mean=tuple(dc.get("mean", [0.5071, 0.4867, 0.4408])),
+            std=tuple(dc.get("std", [0.2675, 0.2565, 0.2761])),
+        )
+        return CIFAR100DataModule(config)
     raise ValueError(f"Unsupported data type: {dc.type}")
 
 
-def create_model(cfg: DictConfig, num_classes: int) -> MLPClassifier:
+def create_model(cfg: DictConfig, num_classes: int) -> MLPClassifier | ResNet:
     """Create a model from a Hydra config."""
     mc = cfg.model
     if mc.type == "mlp":
@@ -101,6 +118,12 @@ def create_model(cfg: DictConfig, num_classes: int) -> MLPClassifier:
             input_dim=mc.input_dim,
             hidden_dim=mc.hidden_dim,
             num_classes=num_classes,
+        )
+    if mc.type == "resnet":
+        return ResNet(
+            num_classes=num_classes,
+            base_filters=mc.get("base_filters", 64),
+            dropout=mc.get("dropout", 0.0),
         )
     raise ValueError(f"Unsupported model type: {mc.type}")
 
@@ -183,12 +206,14 @@ def create_method(
 
 
 def create_pl_module(
-    model: MLPClassifier,
+    model: MLPClassifier | ResNet,
     method: Method,
     cfg: DictConfig,
     bank: AbstractGhostBank | None = None,
     num_classes: int | None = None,
     minority_classes: list[int] | None = None,
+    exposure_tracker: ExposureTracker | None = None,
+    pid_controller: PIDController | None = None,
 ) -> GhostBankLightningModule:
     """Create a PL LightningModule from components."""
     return GhostBankLightningModule(
@@ -198,7 +223,12 @@ def create_pl_module(
         learning_rate=cfg.training.learning_rate,
         num_classes=num_classes,
         optimizer_name=cfg.training.get("optimizer", "sgd"),
+        lr_scheduler=cfg.training.get("lr_scheduler", None),
+        momentum=cfg.training.get("momentum", 0.0),
+        weight_decay=cfg.training.get("weight_decay", 0.0),
         minority_classes=minority_classes,
+        exposure_tracker=exposure_tracker,
+        pid_controller=pid_controller,
     )
 
 

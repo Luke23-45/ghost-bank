@@ -1,0 +1,12 @@
+type: cifar100
+root: ./data/cifar100
+seed: 13
+batch_size: 128
+num_workers: 4
+pin_memory: true
+persistent_workers: true
+prefetch_factor: 2
+num_tasks: 10
+classes_per_task: 10
+mean: [0.5071, 0.4867, 0.4408]
+std: [0.2675, 0.2565, 0.2761]

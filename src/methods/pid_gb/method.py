@@ -70,7 +70,7 @@ class PIDGBMethod(Method):
             with torch.no_grad():
                 logits = pl_module(x)
             per_class_loss = self._compute_per_class_loss(
-                logits, y, pl_module.num_classes, pl_module, bank
+                logits, y, pid.num_classes, pl_module, bank
             )
             debt = pid.update(per_class_loss)
 

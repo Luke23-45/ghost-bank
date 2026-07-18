@@ -1,0 +1,3 @@
+seeds: [13, 42, 73]
+methods: [baseline, static_bank, ed_gb, pid_gb]
+epochs_per_task: 70

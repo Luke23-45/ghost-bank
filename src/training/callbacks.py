@@ -65,21 +65,21 @@ class DistributionShiftCallback(pl.Callback):
 
 
 class DebtCurveLogger(pl.Callback):
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx) -> None:
+    def on_train_epoch_end(self, trainer, pl_module) -> None:
         bank = getattr(pl_module, "bank", None)
         if isinstance(bank, ExposureDebtGhostBank):
             for i, d in enumerate(bank.last_debt):
-                pl_module.log(f"debt/class_{i}", d, on_step=True)
+                pl_module.log(f"debt/class_{i}", d, on_epoch=True)
             for i, a in enumerate(bank.last_allocation):
-                pl_module.log(f"alloc/class_{i}", a, on_step=True)
+                pl_module.log(f"alloc/class_{i}", a, on_epoch=True)
 
 
 class ExposureTrackerCallback(pl.Callback):
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx) -> None:
+    def on_train_epoch_end(self, trainer, pl_module) -> None:
         tracker = getattr(pl_module, "exposure_tracker", None)
         if tracker is not None:
             for i, e in enumerate(tracker.accumulated()):
-                pl_module.log(f"exposure/class_{i}", e, on_step=True)
+                pl_module.log(f"exposure/class_{i}", e, on_epoch=True)
 
 
 class GhostBankProgressBar(TQDMProgressBar):

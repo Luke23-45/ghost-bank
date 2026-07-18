@@ -26,20 +26,28 @@ class GhostBankLightningModule(pl.LightningModule):
         learning_rate: float = 0.05,
         num_classes: int | None = None,
         optimizer_name: str = "sgd",
+        lr_scheduler: str | None = None,
+        momentum: float = 0.0,
+        weight_decay: float = 0.0,
         minority_classes: Sequence[int] | None = None,
+        exposure_tracker: ExposureTracker | None = None,
+        pid_controller: PIDController | None = None,
     ) -> None:
         super().__init__()
-        self.save_hyperparameters(ignore=("model", "method", "bank"))
+        self.save_hyperparameters(ignore=("model", "method", "bank", "exposure_tracker", "pid_controller"))
         self.model = model
         self.method = method
         self.bank = bank
         self.learning_rate = learning_rate
         self.optimizer_name = optimizer_name
+        self.lr_scheduler = lr_scheduler
+        self.momentum = momentum
+        self.weight_decay = weight_decay
         self.num_classes = num_classes
         self.minority_classes = minority_classes
 
-        self.exposure_tracker: ExposureTracker | None = None
-        if getattr(method, "needs_exposure_tracker", False):
+        self.exposure_tracker = exposure_tracker
+        if self.exposure_tracker is None and getattr(method, "needs_exposure_tracker", False):
             if num_classes is not None:
                 self.exposure_tracker = ExposureTracker(num_classes)
             else:
@@ -49,8 +57,8 @@ class GhostBankLightningModule(pl.LightningModule):
                     type(method).__name__,
                 )
 
-        self.pid_controller: PIDController | None = None
-        if getattr(method, "needs_pid_controller", False):
+        self.pid_controller = pid_controller
+        if self.pid_controller is None and getattr(method, "needs_pid_controller", False):
             if num_classes is not None:
                 self.pid_controller = PIDController(
                     num_classes,
@@ -148,7 +156,28 @@ class GhostBankLightningModule(pl.LightningModule):
         x, _ = batch
         return self.model(x).argmax(dim=-1)
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
+    def configure_optimizers(self) -> dict | torch.optim.Optimizer:
         if self.optimizer_name == "adam":
-            return torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        return torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+            optim = torch.optim.Adam(
+                self.model.parameters(),
+                lr=self.learning_rate,
+                weight_decay=self.weight_decay,
+            )
+        else:
+            optim = torch.optim.SGD(
+                self.model.parameters(),
+                lr=self.learning_rate,
+                momentum=self.momentum,
+                weight_decay=self.weight_decay,
+            )
+
+        if self.lr_scheduler == "cosine":
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optim, T_max=self.trainer.max_epochs if self.trainer else 100,
+            )
+            return {
+                "optimizer": optim,
+                "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"},
+            }
+
+        return optim

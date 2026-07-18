@@ -38,6 +38,15 @@ class AbstractGhostBank(ABC):
         return getattr(self, "_frozen", False)
 
     @abstractmethod
+    def expand(self, num_new_classes: int) -> None:
+        """Expand the bank to accommodate new classes.
+
+        New classes start with empty storage pools.
+        Existing stored samples are preserved.
+        """
+        ...
+
+    @abstractmethod
     def state_dict(self) -> dict:
         """Return serializable state for checkpointing."""
         ...

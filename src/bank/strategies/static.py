@@ -29,17 +29,30 @@ class StaticReplayBank(AbstractGhostBank):
         self._capacity = capacity_per_class
         self._rng = random.Random(seed)
 
+    @staticmethod
+    def _to_tensor_label(y: object) -> torch.Tensor:
+        if torch.is_tensor(y):
+            return y
+        return torch.tensor(y, dtype=torch.long)
+
     def store(self, examples: list) -> None:
         if getattr(self, "_frozen", False):
             return
         for example in examples:
-            _, y = example
+            x, y = example
+            y = self._to_tensor_label(y)
             cid = _to_int(y)
             if cid in self._bank and len(self._bank[cid]) < self._capacity:
-                self._bank[cid].append(example)
+                self._bank[cid].append((x, y))
 
     def query(self, budget: int, **kwargs) -> list:
         return sample_uniform(self._bank, budget, self._rng)
+
+    def expand(self, num_new_classes: int) -> None:
+        max_existing = max(self._bank.keys()) if self._bank else -1
+        for c in range(max_existing + 1, max_existing + 1 + num_new_classes):
+            if c not in self._bank:
+                self._bank[c] = []
 
     def state_dict(self) -> dict:
         return {

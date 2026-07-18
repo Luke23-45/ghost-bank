@@ -1,0 +1,5 @@
+type: resnet
+depth: 18
+num_classes: 10
+base_filters: 64
+dropout: 0.0
