@@ -123,8 +123,8 @@ class CIFAR100Ingestor:
 
         print(f"[CIFAR100Ingestor] Downloading parquet from Hugging Face ({CIFAR100_HF_REPO}) ...")
 
-        train_rel = "cifar100/train-00000-of-00001.parquet"
-        test_rel = "cifar100/test-00000-of-00001.parquet"
+        train_rel = "cifar100/train/0000.parquet"
+        test_rel = "cifar100/test/0000.parquet"
 
         train_path = hf_hub_download(
             repo_id=CIFAR100_HF_REPO,
@@ -207,8 +207,6 @@ class CIFAR100Ingestor:
             "image_shape": list(train_imgs.shape[1:]),
             "val_split": self.val_split,
             "cache_version": CACHE_VERSION,
-            "fine_label_names": list(df_train.columns),
-            "coarse_label_names": list(df_train.columns),
             "source": "huggingface_parquet",
         }
         if self.val_split > 0 and val_targets is not None:
