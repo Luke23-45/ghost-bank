@@ -31,6 +31,7 @@ from src.training import (
     GhostBankLightningModule,
     GhostBankProgressBar,
 )
+from src.utils.logging import setup_logging
 from studies.output import OutputManager
 from studies.runner.common.path_utils import get_config_dir
 
@@ -54,6 +55,10 @@ class AbstractRunner(ABC):
     def run(self) -> list[dict]:
         """Execute all composed configs and return per-run metrics."""
         configs = list(self.compose_configs())
+        if configs:
+            log_cfg = configs[0][0].training.get("logging", {})
+            log_level = log_cfg.get("level", "info")
+            setup_logging(level=log_level)
         all_metrics: list[dict] = []
         for cfg, run_name in tqdm(configs, desc="Experiment sweep", unit="run"):
             mgr = OutputManager(
@@ -283,8 +288,17 @@ def _run_single_seed(
         minority_classes=minority_classes,
     )
 
+    # Determine quiet / verbose mode from training.logging.level -----------
+    log_cfg = cfg.training.get("logging", {})
+    log_level = log_cfg.get("level", "info")
+    _quiet = log_level in ("warning", "error", "critical", "none")
+
+    show_progress = cfg.training.get("enable_progress_bar", True)
+    if _quiet:
+        show_progress = False
+
     callbacks: list[pl.Callback] = []
-    if cfg.training.get("enable_progress_bar", True):
+    if show_progress:
         callbacks.append(
             GhostBankProgressBar(
                 refresh_rate=cfg.training.get("progress_refresh_rate", 1),
@@ -323,7 +337,8 @@ def _run_single_seed(
         max_epochs=cfg.training.max_epochs,
         log_every_n_steps=cfg.training.log_every_n_steps,
         gradient_clip_val=cfg.training.get("gradient_clip_val", None),
-        enable_progress_bar=cfg.training.get("enable_progress_bar", True),
+        enable_progress_bar=show_progress,
+        enable_model_summary=not _quiet,
         callbacks=callbacks,
         logger=[csv_logger],
         enable_checkpointing=False,

@@ -5,3 +5,11 @@ log_every_n_steps: 10
 gradient_clip_val: null
 enable_progress_bar: false
 progress_refresh_rate: 1
+
+# Logging / verbosity control ------------------------------------------------
+#   level:  debug | info | warning | error | critical | none
+#   When level >= warning, progress bars, model summaries, and PL banners
+#   are automatically suppressed regardless of the toggles above.
+#   Overridable at deployment via env var: GHOST_BANK_LOG_LEVEL
+logging:
+  level: info

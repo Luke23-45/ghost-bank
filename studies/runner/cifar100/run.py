@@ -22,6 +22,7 @@ from src.training import (
     DebtCurveLogger,
     ExposureTrackerCallback,
 )
+from src.utils.logging import setup_logging
 from studies.output import OutputManager
 from studies.runner.cifar100.metrics import average_accuracy, forgetting, backward_transfer
 from studies.runner.common.base_runner import (
@@ -94,6 +95,8 @@ class CIFAR100Runner(AbstractRunner):
         cfg: DictConfig,
         output_manager: OutputManager,
     ) -> dict:
+        log_cfg = cfg.training.get("logging", {})
+        setup_logging(level=log_cfg.get("level", "info"))
         seeds: list[int] = cfg.runner.get("seeds", [13])
 
         all_metrics: list[dict] = []
@@ -174,8 +177,17 @@ class CIFAR100Runner(AbstractRunner):
                 pid_controller=pid_controller,
             )
 
+            # Determine quiet / verbose mode from training.logging.level --
+            log_cfg = cfg.training.get("logging", {})
+            log_level = log_cfg.get("level", "info")
+            _quiet = log_level in ("warning", "error", "critical", "none")
+
+            show_progress = cfg.training.get("enable_progress_bar", True)
+            if _quiet:
+                show_progress = False
+
             callbacks: list[pl.Callback] = []
-            if cfg.training.get("enable_progress_bar", True):
+            if show_progress:
                 callbacks.append(
                     GhostBankProgressBar(
                         refresh_rate=cfg.training.get("progress_refresh_rate", 1),
@@ -200,7 +212,8 @@ class CIFAR100Runner(AbstractRunner):
                 max_epochs=cfg.runner.get("epochs_per_task", 70),
                 log_every_n_steps=cfg.training.log_every_n_steps,
                 gradient_clip_val=cfg.training.get("gradient_clip_val", None),
-                enable_progress_bar=cfg.training.get("enable_progress_bar", True),
+                enable_progress_bar=show_progress,
+                enable_model_summary=not _quiet,
                 callbacks=callbacks,
                 logger=[csv_logger],
                 enable_checkpointing=False,
