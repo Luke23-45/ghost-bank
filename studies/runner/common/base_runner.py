@@ -63,12 +63,27 @@ class AbstractRunner(ABC):
             mgr.initialize()
             mgr.save_config(OmegaConf.to_yaml(cfg))
             try:
-                metrics = run_experiment(cfg, output_manager=mgr)
+                metrics = self.run_experiment(cfg, output_manager=mgr)
                 all_metrics.append(metrics)
             except BaseException:
                 mgr.fail()
                 raise
         return all_metrics
+
+    def run_experiment(
+        self,
+        cfg: DictConfig,
+        output_manager: OutputManager,
+    ) -> dict:
+        """Run a single experiment config over all configured seeds.
+
+        Subclasses (e.g. :class:`~studies.runner.cifar100.run.CIFAR100Runner`)
+        override this to implement custom experiment orchestration.
+        The default implementation delegates to the module-level
+        :func:`run_experiment` for synthetic-benchmark backward compat.
+        """
+        # pylint: disable=no-value-for-parameter
+        return run_experiment(cfg, output_manager=output_manager)
 
 
 # ---------------------------------------------------------------------------
