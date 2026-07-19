@@ -120,8 +120,5 @@ def _uniform_target_per_class(pl_module, acc: list[int], batch_size: int) -> lis
     num_classes = getattr(pl_module, "num_classes", None) or len(acc)
     if num_classes <= 0:
         return list(acc)
-    if pl_module.global_step > 0 and batch_size > 0:
-        target = float(pl_module.global_step * batch_size) / float(num_classes)
-    else:
-        target = float(sum(acc)) / float(num_classes) if num_classes > 0 else 0.0
+    target = float(sum(acc) + batch_size) / float(num_classes) if num_classes > 0 else 0.0
     return [target] * num_classes

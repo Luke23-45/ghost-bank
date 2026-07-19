@@ -35,6 +35,7 @@ from studies.runner.common.base_runner import (
     create_method,
     create_pl_module,
 )
+from src.data.cifar100.transforms import make_train_transform_from_rng
 from studies.runner.common.path_utils import get_config_dir
 
 BANK_MAP = {"static_bank": "static", "ed_gb": "ed_gb", "pid_gb": "pid_gb"}
@@ -171,12 +172,22 @@ class CIFAR100Runner(AbstractRunner):
             train_loader, _ = dm.get_task_loaders(task_id)
             current_num_classes = (task_id + 1) * classes_per_task
 
+            augment_rng = torch.Generator(device="cpu")
+            augment_rng.manual_seed(cfg.data.seed + task_id)
+            train_transform = make_train_transform_from_rng(
+                mean=dm.config.mean,
+                std=dm.config.std,
+                rng=augment_rng,
+            )
+
             pl_module = create_pl_module(
                 model, method, cfg,
                 bank=bank,
                 num_classes=current_num_classes,
                 exposure_tracker=exposure_tracker,
                 pid_controller=pid_controller,
+                train_transform=train_transform,
+                augment_generator=augment_rng,
             )
 
             # Determine quiet / verbose mode from training.logging.level --
@@ -212,7 +223,7 @@ class CIFAR100Runner(AbstractRunner):
                     EarlyStopping(
                         monitor=es_cfg.get("monitor", "val/acc"),
                         mode=es_cfg.get("mode", "max"),
-                        patience=es_cfg.get("patience", 5),
+                        patience=es_cfg.get("patience", 10),
                         min_delta=es_cfg.get("min_delta", 0.001),
                         stopping_threshold=es_cfg.get("stopping_threshold", None),
                         verbose=False,

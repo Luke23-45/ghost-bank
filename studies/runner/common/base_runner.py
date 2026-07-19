@@ -199,6 +199,8 @@ def create_pl_module(
     minority_classes: list[int] | None = None,
     exposure_tracker: ExposureTracker | None = None,
     pid_controller: PIDController | None = None,
+    train_transform: object | None = None,
+    augment_generator: torch.Generator | None = None,
 ) -> GhostBankLightningModule:
     """Create a PL LightningModule from components."""
     return GhostBankLightningModule(
@@ -214,4 +216,6 @@ def create_pl_module(
         minority_classes=minority_classes,
         exposure_tracker=exposure_tracker,
         pid_controller=pid_controller,
+        train_transform=train_transform,
+        augment_generator=augment_generator,
     )

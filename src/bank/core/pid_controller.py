@@ -72,7 +72,8 @@ class PIDController:
             i = self.K_i * self._integral[c]
             d = self.K_d * (self._smoothed_loss[c] - self._prev_loss[c])
 
-            raw_debt.append(max(0.0, self.class_weights[c] * (p + i + d)))
+            val = self.class_weights[c] * (p + i + d)
+            raw_debt.append(min(10000.0, max(0.0, val)))
 
             if L is not None:
                 self._prev_loss[c] = self._smoothed_loss[c]

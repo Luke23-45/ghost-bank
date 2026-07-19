@@ -2,7 +2,7 @@ learning_rate: 0.1
 optimizer: sgd
 momentum: 0.9
 weight_decay: 0.0005
-lr_scheduler: cosine
+# lr_scheduler: cosine
 max_epochs: 70
 log_every_n_steps: 10
 gradient_clip_val: 1.0
@@ -14,7 +14,7 @@ progress_refresh_rate: 1
 early_stopping:
   monitor: val/acc           # metric to track (logged via self.log)
   mode: max                  # max = higher is better, min = lower
-  patience: 5                # epochs with no improvement before stopping
+  patience: 10               # epochs with no improvement before stopping
   min_delta: 0.001           # minimum absolute change to count as improvement
   # stopping_threshold: 0.99 # optional: stop immediately if this value is reached
 

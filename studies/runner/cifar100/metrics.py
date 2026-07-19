@@ -13,8 +13,8 @@ def forgetting(acc_matrix: list[list[float]]) -> float:
     acc_matrix = _to_rect(acc_matrix)
     n_tasks = acc_matrix.shape[1]
     forget_vals = []
-    for i in range(n_tasks):
-        col = acc_matrix[: i + 1, i]
+    for i in range(n_tasks - 1):
+        col = acc_matrix[:, i]
         peak = float(np.nanmax(col))
         final = float(col[-1])
         forget_vals.append(peak - final)
@@ -25,7 +25,7 @@ def backward_transfer(acc_matrix: list[list[float]]) -> float:
     acc_matrix = _to_rect(acc_matrix)
     n_tasks = acc_matrix.shape[1]
     bwt_vals = []
-    for i in range(n_tasks):
+    for i in range(n_tasks - 1):
         first = acc_matrix[i, i]
         final = acc_matrix[-1, i]
         bwt_vals.append(final - first)
