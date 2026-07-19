@@ -140,7 +140,7 @@ class CIFAR100Runner(AbstractRunner):
         total_classes = num_tasks * classes_per_task
 
         model = create_model(cfg, num_classes=classes_per_task)
-        bank = create_bank(cfg, num_classes=total_classes)
+        bank = create_bank(cfg, num_classes=classes_per_task)
         method = create_method(cfg, class_counts=None)
 
         exposure_tracker: ExposureTracker | None = None

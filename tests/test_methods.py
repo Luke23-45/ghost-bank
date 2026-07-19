@@ -1,4 +1,4 @@
-"""Unit tests for all five training methods.
+"""Unit tests for training methods used by CIFAR-100.
 
 Each method's ``compute_loss`` must return a scalar gradient-bearing tensor.
 """
@@ -10,12 +10,9 @@ import torch
 
 from src.bank.strategies.static import StaticReplayBank
 from src.bank.strategies.ed_gb import ExposureDebtGhostBank
-from src.loss import FocalLoss, ClassBalancedLoss
 from src.methods import (
     BaselineMethod,
-    ClassBalancedMethod,
     EDGBMethod,
-    FocalLossMethod,
     StaticBankMethod,
 )
 
@@ -156,64 +153,3 @@ class TestEDGBMethod:
         pl_module.global_step = 100
         loss = method.compute_loss(_make_batch(), pl_module, bank=bank)
         assert loss.requires_grad
-
-
-# -- FocalLossMethod ----------------------------------------------------------
-
-class TestFocalLossMethod:
-    def test_compute_loss_returns_scalar(self):
-        loss_fn = FocalLoss(alpha=0.25, gamma=2.0)
-        method = FocalLossMethod(loss_fn)
-        loss = method.compute_loss(_make_batch(), MockModule())
-        assert loss.ndim == 0
-
-    def test_requires_grad(self):
-        loss_fn = FocalLoss(alpha=0.25, gamma=2.0)
-        method = FocalLossMethod(loss_fn)
-        loss = method.compute_loss(_make_batch(), MockModule())
-        assert loss.requires_grad
-
-    def test_positive_loss(self):
-        loss_fn = FocalLoss(alpha=0.25, gamma=2.0)
-        method = FocalLossMethod(loss_fn)
-        loss = method.compute_loss(_make_batch(), MockModule())
-        assert loss > 0
-
-    def test_different_alpha_gamma(self):
-        loss_fn = FocalLoss(alpha=0.5, gamma=1.0)
-        method = FocalLossMethod(loss_fn)
-        loss = method.compute_loss(_make_batch(), MockModule())
-        assert loss.ndim == 0
-
-
-# -- ClassBalancedMethod ------------------------------------------------------
-
-class TestClassBalancedMethod:
-    def test_compute_loss_returns_scalar(self):
-        loss_fn = ClassBalancedLoss(beta=0.999)
-        method = ClassBalancedMethod(loss_fn, class_counts=[100, 10, 5])
-        loss = method.compute_loss(_make_batch(), MockModule())
-        assert loss.ndim == 0
-
-    def test_requires_grad(self):
-        loss_fn = ClassBalancedLoss(beta=0.999)
-        method = ClassBalancedMethod(loss_fn, class_counts=[100, 10, 5])
-        loss = method.compute_loss(_make_batch(), MockModule())
-        assert loss.requires_grad
-
-    def test_different_class_counts_change_loss(self):
-        loss_fn = ClassBalancedLoss(beta=0.999)
-        batch = _make_batch()
-
-        method_balanced = ClassBalancedMethod(loss_fn, class_counts=[100, 100, 100])
-        loss_balanced = method_balanced.compute_loss(batch, MockModule())
-
-        method_imbalanced = ClassBalancedMethod(loss_fn, class_counts=[100, 10, 1])
-        loss_imbalanced = method_imbalanced.compute_loss(batch, MockModule())
-
-        assert loss_balanced.ndim == 0
-        assert loss_imbalanced.ndim == 0
-
-    def test_class_counts_required(self):
-        with pytest.raises(TypeError):
-            ClassBalancedMethod(ClassBalancedLoss(beta=0.999))

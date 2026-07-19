@@ -1,5 +1,5 @@
 name: pid_gb
-retrieval_budget: 8
+retrieval_budget: 64
 warmup_steps: 0
 K_p: 1.0
 K_i: 0.1

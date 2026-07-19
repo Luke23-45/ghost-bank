@@ -1,8 +1,8 @@
 defaults:
-  - data: synthetic
-  - model: classifier
+  - data: cifar100
+  - model: cifar_resnet
   - method: baseline
-  - training: default
+  - training: cifar100
   - output: default
   - _self_
 

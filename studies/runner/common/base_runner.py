@@ -13,22 +13,17 @@ from src.bank.core.exposure import ExposureTracker
 from src.bank.core.pid_controller import PIDController
 from src.bank.strategies import StaticReplayBank, ExposureDebtGhostBank
 from src.data.cifar100 import CIFAR100DataModule, CIFAR100Config
-from src.data.synthetic import SyntheticDataModule, SyntheticConfig
-from src.loss import FocalLoss, ClassBalancedLoss
 from src.methods import (
     BaselineMethod,
-    ClassBalancedMethod,
     EDGBMethod,
-    FocalLossMethod,
     Method,
     PIDGBMethod,
     StaticBankMethod,
 )
-from src.models import MLPClassifier, ResNet, ResNetConfig
+from src.models import ResNet, ResNetConfig
 from src.training import (
     ConsoleEpochCallback,
     DebtCurveLogger,
-    DistributionShiftCallback,
     ExposureTrackerCallback,
     GhostBankLightningModule,
     GhostBankProgressBar,
@@ -41,9 +36,9 @@ from studies.runner.common.path_utils import get_config_dir
 class AbstractRunner(ABC):
     """Template method for experiment runners.
 
-    Subclasses implement ``compose_configs()`` to produce a list of
-    ``(config, run_name)`` pairs.  Each pair is executed by ``run()``
-    with a fresh ``OutputManager``.
+    Subclasses implement ``compose_configs()`` and ``run_experiment()``.
+    Each composed config is executed by ``run()`` with a fresh
+    ``OutputManager``.
     """
 
     def __init__(self, overrides: list[str] | None = None) -> None:
@@ -52,6 +47,19 @@ class AbstractRunner(ABC):
     @abstractmethod
     def compose_configs(self) -> list[tuple[DictConfig, str | None]]:
         """Return (config, optional run_name) pairs to execute."""
+        ...
+
+    @abstractmethod
+    def run_experiment(
+        self,
+        cfg: DictConfig,
+        output_manager: OutputManager,
+    ) -> dict:
+        """Run a single experiment config over all configured seeds.
+
+        Subclasses implement the full experiment orchestration
+        (multi-task Class-IL loop, multi-seed aggregation, etc.).
+        """
         ...
 
     def run(self) -> list[dict]:
@@ -77,43 +85,15 @@ class AbstractRunner(ABC):
                 raise
         return all_metrics
 
-    def run_experiment(
-        self,
-        cfg: DictConfig,
-        output_manager: OutputManager,
-    ) -> dict:
-        """Run a single experiment config over all configured seeds.
-
-        Subclasses (e.g. :class:`~studies.runner.cifar100.run.CIFAR100Runner`)
-        override this to implement custom experiment orchestration.
-        The default implementation delegates to the module-level
-        :func:`run_experiment` for synthetic-benchmark backward compat.
-        """
-        # pylint: disable=no-value-for-parameter
-        return run_experiment(cfg, output_manager=output_manager)
-
 
 # ---------------------------------------------------------------------------
 # Factory functions
 # ---------------------------------------------------------------------------
 
 
-def create_datamodule(cfg: DictConfig) -> SyntheticDataModule | CIFAR100DataModule:
+def create_datamodule(cfg: DictConfig) -> CIFAR100DataModule:
     """Create a data module from a Hydra config."""
     dc = cfg.data
-    if dc.type == "synthetic":
-        config = SyntheticConfig(
-            seed=dc.seed,
-            imbalance_ratio=dc.imbalance_ratio,
-            majority_train=dc.majority_train,
-            test_per_class=dc.test_per_class,
-            batch_size=dc.batch_size,
-            num_workers=dc.get("num_workers", 0),
-            pin_memory=dc.get("pin_memory", False),
-            persistent_workers=dc.get("persistent_workers", False),
-            prefetch_factor=dc.get("prefetch_factor", 2),
-        )
-        return SyntheticDataModule(config)
     if dc.type == "cifar100":
         config = CIFAR100Config(
             root=dc.root,
@@ -132,15 +112,9 @@ def create_datamodule(cfg: DictConfig) -> SyntheticDataModule | CIFAR100DataModu
     raise ValueError(f"Unsupported data type: {dc.type}")
 
 
-def create_model(cfg: DictConfig, num_classes: int) -> MLPClassifier | ResNet:
+def create_model(cfg: DictConfig, num_classes: int) -> ResNet:
     """Create a model from a Hydra config."""
     mc = cfg.model
-    if mc.type == "mlp":
-        return MLPClassifier(
-            input_dim=mc.input_dim,
-            hidden_dim=mc.hidden_dim,
-            num_classes=num_classes,
-        )
     if mc.type == "resnet":
         return ResNet(
             num_classes=num_classes,
@@ -155,7 +129,7 @@ def create_bank(cfg: DictConfig, num_classes: int) -> AbstractGhostBank | None:
     if "bank" not in cfg:
         return None
     bc = cfg.bank
-    exclude = list(bc.get("exclude_classes", [0]))
+    exclude = list(bc.get("exclude_classes", []))
     if bc.name == "static":
         return StaticReplayBank(num_classes, bc.capacity_per_class, bc.seed, exclude_classes=exclude)
     if bc.name == "ed_gb":
@@ -213,22 +187,11 @@ def create_method(
             method.class_weights = [1.0] * len(class_counts) if class_counts else []
         return method
 
-    if name == "focal_loss":
-        return FocalLossMethod(FocalLoss(alpha=mc.alpha, gamma=mc.gamma))
-
-    if name == "class_balanced":
-        if class_counts is None:
-            raise ValueError("class_counts required for class_balanced method")
-        return ClassBalancedMethod(
-            ClassBalancedLoss(beta=mc.beta),
-            class_counts=class_counts,
-        )
-
     raise ValueError(f"Unsupported method: {name}")
 
 
 def create_pl_module(
-    model: MLPClassifier | ResNet,
+    model: ResNet,
     method: Method,
     cfg: DictConfig,
     bank: AbstractGhostBank | None = None,
@@ -252,192 +215,3 @@ def create_pl_module(
         exposure_tracker=exposure_tracker,
         pid_controller=pid_controller,
     )
-
-
-# ---------------------------------------------------------------------------
-# Single-experiment runner
-# ---------------------------------------------------------------------------
-
-
-def _run_single_seed(
-    cfg: DictConfig,
-    output_root: str,
-    seed: int,
-) -> dict:
-    """Run one seed of an experiment and return metrics.
-
-    Does **not** touch the ``OutputManager`` state machine — all
-    per-seed bookkeeping is the caller's responsibility.
-    """
-    cfg.data.seed = seed
-    pl.seed_everything(seed)
-
-    datamodule = create_datamodule(cfg)
-    datamodule.setup("fit")
-
-    train_dataset = datamodule.train_dataset
-    num_classes = train_dataset.num_classes
-    class_counts = train_dataset.class_counts
-
-    model = create_model(cfg, num_classes=num_classes)
-    bank = create_bank(cfg, num_classes=num_classes)
-    method = create_method(cfg, class_counts=class_counts)
-    minority_classes = cfg.data.get("minority_classes", None)
-    pl_module = create_pl_module(
-        model, method, cfg,
-        bank=bank,
-        num_classes=num_classes,
-        minority_classes=minority_classes,
-    )
-
-    # Determine quiet / verbose mode from training.logging.level -----------
-    log_cfg = cfg.training.get("logging", {})
-    log_level = log_cfg.get("level", "info")
-    _quiet = log_level in ("warning", "error", "critical", "none")
-
-    show_progress = cfg.training.get("enable_progress_bar", True)
-    if _quiet:
-        show_progress = False
-
-    callbacks: list[pl.Callback] = []
-    if _quiet:
-        callbacks.append(ConsoleEpochCallback(prefix=f"seed={seed}"))
-    elif show_progress:
-        callbacks.append(
-            GhostBankProgressBar(
-                refresh_rate=cfg.training.get("progress_refresh_rate", 1),
-                leave=True,
-            )
-        )
-    if bank is not None:
-        callbacks.append(DebtCurveLogger())
-    if pl_module.exposure_tracker is not None:
-        callbacks.append(ExposureTrackerCallback())
-
-    # Early stopping ----------------------------------------------------------
-    es_cfg = cfg.training.get("early_stopping")
-    if es_cfg is not None:
-        callbacks.append(
-            EarlyStopping(
-                monitor=es_cfg.get("monitor", "val/acc"),
-                mode=es_cfg.get("mode", "max"),
-                patience=es_cfg.get("patience", 5),
-                min_delta=es_cfg.get("min_delta", 0.001),
-                stopping_threshold=es_cfg.get("stopping_threshold", None),
-                verbose=False,
-            )
-        )
-
-    shift_epoch = cfg.runner.get("shift_epoch", None)
-    if shift_epoch is not None:
-        swap = cfg.runner.get("swap_classes", [0, 2])
-        freeze = cfg.runner.get("freeze_bank", False)
-        shift_test = cfg.runner.get("shift_test_dataset", False)
-        callbacks.append(
-            DistributionShiftCallback(
-                shift_epoch=shift_epoch,
-                swap_classes=tuple(swap),
-                freeze_bank=freeze,
-                shift_test_dataset=shift_test,
-            )
-        )
-
-    csv_logger = CSVLogger(
-        save_dir=output_root,
-        name=f"seed_{seed}",
-        version="",
-    )
-
-    trainer = pl.Trainer(
-        accelerator=getattr(cfg.training, "accelerator", "auto"),
-        devices=getattr(cfg.training, "devices", 1),
-        precision=getattr(cfg.training, "precision", 32),
-        max_epochs=cfg.training.max_epochs,
-        log_every_n_steps=cfg.training.log_every_n_steps,
-        gradient_clip_val=cfg.training.get("gradient_clip_val", None),
-        enable_progress_bar=show_progress,
-        enable_model_summary=not _quiet,
-        callbacks=callbacks,
-        logger=[csv_logger],
-        enable_checkpointing=False,
-    )
-
-    trainer.fit(pl_module, datamodule=datamodule)
-    test_results = trainer.test(pl_module, datamodule=datamodule)
-
-    metrics: dict = {"method": cfg.method.name, "seed": seed}
-    if test_results:
-        for key, val in test_results[0].items():
-            metrics[str(key)] = val
-
-    return metrics
-
-
-def _aggregate_metrics(all_metrics: list[dict]) -> dict:
-    """Compute mean ± std for every numeric metric across seeds."""
-    if not all_metrics:
-        return {}
-
-    aggregated: dict = {
-        "method": all_metrics[0]["method"],
-        "num_seeds": len(all_metrics),
-    }
-
-    numeric_keys: set[str] = set()
-    for m in all_metrics:
-        for k, v in m.items():
-            if k not in ("method", "seed") and isinstance(v, (int, float)):
-                numeric_keys.add(k)
-
-    for key in sorted(numeric_keys):
-        values = [m[key] for m in all_metrics if key in m]
-        if values:
-            mean = sum(values) / len(values)
-            std = (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
-            aggregated[f"{key}_mean"] = mean
-            aggregated[f"{key}_std"] = std
-
-    return aggregated
-
-
-def run_experiment(
-    cfg: DictConfig,
-    output_manager: OutputManager,
-) -> dict:
-    """Run an experiment over all configured seeds and return aggregated metrics.
-
-    ``output_manager`` must already be initialised with config saved.
-    """
-    seeds: list[int] = cfg.runner.get("seeds", [13])
-    if not seeds:
-        raise ValueError(
-            f"runner.seeds is empty for method '{cfg.method.name}'. "
-            "At least one seed is required."
-        )
-
-    all_metrics: list[dict] = []
-    for seed in seeds:
-        metrics = _run_single_seed(cfg, str(output_manager.root), seed)
-        all_metrics.append(metrics)
-
-    aggregated = _aggregate_metrics(all_metrics)
-
-    try:
-        for m in all_metrics:
-            output_manager.write_metrics(m, f"seed_{m['seed']}_metrics.json")
-
-        output_manager.write_metrics(aggregated, "aggregated_metrics.csv")
-        output_manager.finalize(
-            {
-                "aggregated": aggregated,
-                "per_seed_metrics": all_metrics,
-                "method": cfg.method.name,
-                "num_seeds": len(seeds),
-            }
-        )
-        output_manager.complete()
-    except BaseException:
-        output_manager.fail()
-        raise
-
-    return aggregated
