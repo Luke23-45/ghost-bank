@@ -23,7 +23,7 @@ def sample_by_allocation(
             continue
         pool = bank.get(class_id, [])
         if not pool:
-            LOGGER.warning(
+            LOGGER.debug(
                 "sample_by_allocation: class %d has empty pool (allocation=%d), skipping",
                 class_id,
                 count,
