@@ -18,9 +18,7 @@ class ExposureDebtGhostBank(AbstractGhostBank):
     exposure debt from the tracker state, allocates a retrieval
     budget proportionally, and retrieves samples.
 
-    By default class 0 is excluded from storage and retrieval (it is
-    the majority class in the synthetic benchmark).  Override with
-    ``exclude_classes``.
+    Pass ``exclude_classes=set()`` to store every class.
     """
 
     def __init__(
@@ -30,7 +28,7 @@ class ExposureDebtGhostBank(AbstractGhostBank):
         seed: int,
         exclude_classes: Collection[int] | None = None,
     ) -> None:
-        excluded = set(exclude_classes) if exclude_classes is not None else {0}
+        excluded = set(exclude_classes) if exclude_classes is not None else set()
         self._bank: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
         self._capacity = capacity_per_class
         self._rng = random.Random(seed)

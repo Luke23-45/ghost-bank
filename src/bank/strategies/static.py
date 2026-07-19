@@ -13,8 +13,8 @@ class StaticReplayBank(AbstractGhostBank):
     """Uniform random replay buffer.
 
     Stores per-class example pools for all classes **except** those
-    listed in ``exclude_classes``.  By default class 0 is excluded
-    (the majority class in the synthetic benchmark).
+    listed in ``exclude_classes``.  Pass ``exclude_classes=set()`` to
+    store every class.
     """
 
     def __init__(
@@ -24,7 +24,7 @@ class StaticReplayBank(AbstractGhostBank):
         seed: int,
         exclude_classes: Collection[int] | None = None,
     ) -> None:
-        excluded = set(exclude_classes) if exclude_classes is not None else {0}
+        excluded = set(exclude_classes) if exclude_classes is not None else set()
         self._bank: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
         self._capacity = capacity_per_class
         self._rng = random.Random(seed)

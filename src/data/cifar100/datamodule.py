@@ -10,9 +10,19 @@ from src.data.base import BaseDataModule
 from src.data.cifar100.dataset import CIFAR100TaskView
 from src.data.cifar100.defaults import CIFAR100Config
 from src.data.cifar100.ingest import CIFAR100Ingestor
+from src.data.cifar100.transforms import make_eval_transform, make_train_transform
 
 
 class CIFAR100DataModule(BaseDataModule):
+    """CIFAR-100 Class-Incremental Learning data module.
+
+    Raw tensors live in ``self._train_images``, ``self._test_images`` (and
+    optionally ``self._val_images``).  These are uint8 NHWC for the
+    bank to consume.  The :class:`CIFAR100TaskView` instances returned
+    by ``get_task_loaders`` apply the train / eval transform lazily at
+    ``__getitem__`` time.
+    """
+
     def __init__(self, config: CIFAR100Config) -> None:
         super().__init__()
         self.config = config
@@ -56,33 +66,21 @@ class CIFAR100DataModule(BaseDataModule):
         end = start + self.config.classes_per_task
         return list(range(start, end))
 
-    def _train_transform(self) -> T.Compose:
-        mean = list(self.config.mean)
-        std = list(self.config.std)
-        return T.Compose([
-            T.RandomCrop(32, padding=4),
-            T.RandomHorizontalFlip(),
-            T.ConvertImageDtype(torch.float32),
-            T.Normalize(mean=mean, std=std),
-        ])
+    def _shared_eval_transform(self) -> T.Compose:
+        return make_eval_transform(self.config.mean, self.config.std)
 
-    def _test_transform(self) -> T.Compose:
-        mean = list(self.config.mean)
-        std = list(self.config.std)
-        return T.Compose([
-            T.ConvertImageDtype(torch.float32),
-            T.Normalize(mean=mean, std=std),
-        ])
+    def _shared_train_transform(self) -> T.Compose:
+        return make_train_transform(self.config.mean, self.config.std)
 
     def get_task_loaders(self, task_id: int) -> tuple[DataLoader, DataLoader]:
         class_range = self._class_range(task_id)
         train_view = CIFAR100TaskView(
             self._train_images, self._train_targets, class_range,
-            transform=self._train_transform(),
+            transform=self._shared_train_transform(),
         )
         test_view = CIFAR100TaskView(
             self._test_images, self._test_targets, class_range,
-            transform=self._test_transform(),
+            transform=self._shared_eval_transform(),
         )
         train_loader = DataLoader(
             train_view,
@@ -103,12 +101,12 @@ class CIFAR100DataModule(BaseDataModule):
         return train_loader, test_loader
 
     def get_eval_loader(self, up_to_task_id: int) -> DataLoader:
-        class_range = []
+        class_range: list[int] = []
         for t in range(up_to_task_id + 1):
             class_range.extend(self._class_range(t))
         eval_view = CIFAR100TaskView(
             self._test_images, self._test_targets, class_range,
-            transform=self._test_transform(),
+            transform=self._shared_eval_transform(),
         )
         return DataLoader(
             eval_view,
@@ -122,7 +120,7 @@ class CIFAR100DataModule(BaseDataModule):
         class_range = self._class_range(task_id)
         view = CIFAR100TaskView(
             self._test_images, self._test_targets, class_range,
-            transform=self._test_transform(),
+            transform=self._shared_eval_transform(),
         )
         return DataLoader(
             view,
@@ -138,7 +136,7 @@ class CIFAR100DataModule(BaseDataModule):
         class_range = self._class_range(task_id)
         view = CIFAR100TaskView(
             self._val_images, self._val_targets, class_range,
-            transform=self._test_transform(),
+            transform=self._shared_eval_transform(),
         )
         return DataLoader(
             view,
@@ -153,17 +151,17 @@ class CIFAR100DataModule(BaseDataModule):
         class_range = self._class_range(0)
         return CIFAR100TaskView(
             self._train_images, self._train_targets, class_range,
-            transform=self._train_transform(),
+            transform=self._shared_train_transform(),
         )
 
     @property
     def test_dataset(self) -> CIFAR100TaskView:
-        class_range = []
+        class_range: list[int] = []
         for t in range(self.config.num_tasks):
             class_range.extend(self._class_range(t))
         return CIFAR100TaskView(
             self._test_images, self._test_targets, class_range,
-            transform=self._test_transform(),
+            transform=self._shared_eval_transform(),
         )
 
     def train_dataloader(self) -> DataLoader:

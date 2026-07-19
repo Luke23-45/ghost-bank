@@ -1,4 +1,4 @@
-"""Run all major experiments sequentially."""
+"""Run the CIFAR-100 Class-IL benchmark for all four methods."""
 
 from __future__ import annotations
 
@@ -10,23 +10,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
-RUNNERS: list[tuple[str, list[str]]] = [
-    ("synthetic (ED-GB)",  [str(ROOT / "studies/runner/synthetic/run.py"),         "method=ed_gb", "+bank=ed_gb"]),
-    ("baseline_matrix",    [str(ROOT / "studies/runner/baseline_matrix/run.py")]),
-    ("ablation",           [str(ROOT / "studies/runner/ablation/run.py")]),
-    ("stress_test",        [str(ROOT / "studies/runner/stress_test/run.py")]),
-]
+RUNNER = str(ROOT / "studies/runner/cifar100/run.py")
+
+METHODS: list[str] = ["baseline", "static_bank", "ed_gb", "pid_gb"]
 
 
 def main() -> None:
     results: dict[str, bool] = {}
 
     try:
-        for name, args in RUNNERS:
+        for method in METHODS:
+            name = f"cifar100/{method}"
             print(f"\n{'=' * 70}")
             print(f"  [{name}]")
             print(f"{'=' * 70}")
-            proc = subprocess.run([sys.executable, *args], cwd=ROOT, env=ENV)
+            proc = subprocess.run(
+                [sys.executable, RUNNER, f"method={method}"],
+                cwd=ROOT,
+                env=ENV,
+            )
             results[name] = proc.returncode == 0
     except KeyboardInterrupt:
         print("\n\nInterrupted by user.")

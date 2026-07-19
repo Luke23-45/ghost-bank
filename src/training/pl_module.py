@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from src.bank.core.base import AbstractGhostBank
 from src.bank.core.exposure import ExposureTracker
 from src.bank.core.pid_controller import PIDController
-from src.methods.base import Method
+from src.methods.base import Method, MethodContext
 from src.utils.logging import get_logger
 from src.utils.metrics import balanced_accuracy, macro_f1, minority_recall
 
@@ -32,9 +32,15 @@ class GhostBankLightningModule(pl.LightningModule):
         minority_classes: Sequence[int] | None = None,
         exposure_tracker: ExposureTracker | None = None,
         pid_controller: PIDController | None = None,
+        train_transform: object | None = None,
+        augment_generator: torch.Generator | None = None,
     ) -> None:
         super().__init__()
-        self.save_hyperparameters(ignore=("model", "method", "bank", "exposure_tracker", "pid_controller"))
+        self.save_hyperparameters(ignore=(
+            "model", "method", "bank",
+            "exposure_tracker", "pid_controller",
+            "train_transform", "augment_generator",
+        ))
         self.model = model
         self.method = method
         self.bank = bank
@@ -45,6 +51,9 @@ class GhostBankLightningModule(pl.LightningModule):
         self.weight_decay = weight_decay
         self.num_classes = num_classes
         self.minority_classes = minority_classes
+
+        self._train_transform = train_transform
+        self._augment_generator = augment_generator
 
         self.exposure_tracker = exposure_tracker
         if self.exposure_tracker is None and getattr(method, "needs_exposure_tracker", False):
@@ -82,19 +91,34 @@ class GhostBankLightningModule(pl.LightningModule):
 
     def training_step(
         self,
-        batch: tuple[torch.Tensor, torch.Tensor],
+        batch: tuple | list,
         batch_idx: int,
     ) -> torch.Tensor:
-        loss = self.method.compute_loss(batch, self, bank=self.bank)
+        idx, x, y = _unpack_batch(batch)
+        # Look up the *raw* uint8 NHWC views of the same samples so the
+        # bank can store pre-augmentation images.  ``idx`` is a
+        # batch-local view index; the dataset is held on the active
+        # trainer dataloader via ``self.trainer.train_dataloader``.
+        raw_x, raw_y = _resolve_raw_from_train_loader(self.trainer, idx, y)
+        context = MethodContext(
+            raw_x=raw_x,
+            raw_y=raw_y,
+            raw_indices=idx,
+            train_transform=self._train_transform,
+            augment_rng=self._augment_generator,
+        )
+        loss = self.method.compute_loss(
+            (x, y), self, bank=self.bank, context=context,
+        )
         self.log("train/loss", loss, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(
         self,
-        batch: tuple[torch.Tensor, torch.Tensor],
+        batch: tuple | list,
         batch_idx: int,
     ) -> None:
-        x, y = batch
+        _, x, y = _unpack_batch(batch)
         logits = self.model(x)
         loss = F.cross_entropy(logits, y)
         preds = logits.argmax(dim=-1)
@@ -108,10 +132,10 @@ class GhostBankLightningModule(pl.LightningModule):
 
     def test_step(
         self,
-        batch: tuple[torch.Tensor, torch.Tensor],
+        batch: tuple | list,
         batch_idx: int,
     ) -> None:
-        x, y = batch
+        _, x, y = _unpack_batch(batch)
         logits = self.model(x)
         preds = logits.argmax(dim=-1)
         self.test_preds.append(preds.cpu())
@@ -149,11 +173,11 @@ class GhostBankLightningModule(pl.LightningModule):
 
     def predict_step(
         self,
-        batch: tuple[torch.Tensor, torch.Tensor],
+        batch: tuple | list,
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> torch.Tensor:
-        x, _ = batch
+        _, x, _ = _unpack_batch(batch)
         return self.model(x).argmax(dim=-1)
 
     def configure_optimizers(self) -> dict | torch.optim.Optimizer:
@@ -181,3 +205,51 @@ class GhostBankLightningModule(pl.LightningModule):
             }
 
         return optim
+
+
+def _unpack_batch(batch: tuple | list) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Accept either ``(idx, x, y)`` (3-tuple from the indexed dataset)
+    or ``(x, y)`` (legacy 2-tuple) and return ``(idx, x, y)``.
+
+    For the legacy path, ``idx`` defaults to a zero tensor of the right size.
+    """
+    if isinstance(batch, (list, tuple)) and len(batch) == 3:
+        idx, x, y = batch
+        if not torch.is_tensor(idx):
+            idx = torch.as_tensor(idx, dtype=torch.long)
+        elif idx.dtype != torch.long:
+            idx = idx.long()
+        return idx, x, y
+    if isinstance(batch, (list, tuple)) and len(batch) == 2:
+        x, y = batch
+        idx = torch.zeros(x.size(0), dtype=torch.long)
+        return idx, x, y
+    raise ValueError(f"Unexpected batch structure: {type(batch).__name__}")
+
+
+def _resolve_raw_from_train_loader(
+    trainer: pl.Trainer | None,
+    idx: torch.Tensor,
+    y: torch.Tensor,
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """Fetch the raw uint8 NHWC view of the items in the batch.
+
+    The active task dataset is accessible via ``trainer.train_dataloader.dataset``
+    when running.  Returns ``(None, None)`` outside the trainer context
+    or when the dataset doesn't expose ``raw_images`` / ``raw_targets``.
+    """
+    if trainer is None:
+        return None, None
+    loader = trainer.train_dataloader
+    if loader is None:
+        return None, None
+    dataset = loader.dataset
+    if not hasattr(dataset, "raw_images") or not hasattr(dataset, "raw_targets"):
+        return None, None
+    try:
+        idx_long = idx.long()
+        raw_x = dataset.raw_images[idx_long]
+        raw_y = dataset.raw_targets[idx_long]
+        return raw_x, raw_y
+    except Exception:
+        return None, None
