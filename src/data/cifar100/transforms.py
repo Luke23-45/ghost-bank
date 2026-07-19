@@ -64,14 +64,11 @@ def make_train_transform_from_rng(
     a directly constructed Generator.
     """
 
+    import torch.nn.functional as F
+
     def _random_crop(x: torch.Tensor) -> torch.Tensor:
-        _, h, w = x.shape[-3], x.shape[-2], x.shape[-1]
-        pad_h = h + 4
-        pad_w = w + 4
-        padded = torch.zeros(
-            (x.shape[-3], pad_h, pad_w), dtype=x.dtype, device=x.device,
-        )
-        padded[..., 4:4 + h, 4:4 + w] = x
+        h, w = x.shape[-2], x.shape[-1]
+        padded = F.pad(x, (4, 4, 4, 4), mode='constant', value=0)
 
         if rng is not None:
             top = int(torch.randint(0, 9, (1,), generator=rng).item())

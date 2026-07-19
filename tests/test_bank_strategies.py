@@ -1,7 +1,7 @@
 """Tests for StaticReplayBank and ExposureDebtGhostBank.
 
-Note: Both banks initialize per-class storage with ``range(1, num_classes)``,
-meaning class 0 is intentionally excluded from storage and retrieval.
+Both banks store every class by default; pass ``exclude_classes`` to
+skip specific classes.
 """
 
 import random
@@ -29,10 +29,10 @@ def _make_examples(
 # -- StaticReplayBank ---------------------------------------------------------
 
 class TestStaticReplayBank:
-    def test_init_creates_bank_for_classes_1_to_n(self):
+    def test_init_creates_bank_for_all_classes(self):
         bank = StaticReplayBank(num_classes=4, capacity_per_class=10, seed=42)
-        assert set(bank._bank.keys()) == {1, 2, 3}
-        assert 0 not in bank._bank
+        assert set(bank._bank.keys()) == {0, 1, 2, 3}
+        assert 0 in bank._bank
 
     def test_store_and_query(self):
         bank = StaticReplayBank(num_classes=3, capacity_per_class=10, seed=42)
@@ -42,12 +42,13 @@ class TestStaticReplayBank:
         assert len(result) == 4
         assert all(ex[1] in (1, 2) for ex in result)
 
-    def test_store_class_zero_is_ignored(self):
+    def test_store_class_zero(self):
         bank = StaticReplayBank(num_classes=3, capacity_per_class=10, seed=42)
         examples = _make_examples([0, 0, 0])
         bank.store(examples)
         result = bank.query(budget=3)
-        assert result == []
+        assert len(result) == 3
+        assert all(ex[1] == 0 for ex in result)
 
     def test_query_empty_bank(self):
         bank = StaticReplayBank(num_classes=3, capacity_per_class=10, seed=42)
@@ -107,10 +108,10 @@ class TestStaticReplayBank:
 # -- ExposureDebtGhostBank ----------------------------------------------------
 
 class TestExposureDebtGhostBank:
-    def test_init_creates_bank_for_classes_1_to_n(self):
+    def test_init_creates_bank_for_all_classes(self):
         bank = ExposureDebtGhostBank(num_classes=4, capacity_per_class=10, seed=42)
-        assert set(bank._bank.keys()) == {1, 2, 3}
-        assert 0 not in bank._bank
+        assert set(bank._bank.keys()) == {0, 1, 2, 3}
+        assert 0 in bank._bank
 
     def test_store_and_query_with_exposure(self):
         bank = ExposureDebtGhostBank(num_classes=3, capacity_per_class=10, seed=42)

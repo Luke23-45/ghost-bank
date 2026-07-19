@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import random
-
 import torch
 import torch.nn.functional as F
 
@@ -161,7 +159,7 @@ class PIDGBMethod(Method):
             ):
                 items = bank._bank[c]
                 n = min(self.bank_probe_size, len(items))
-                sampled = random.sample(items, n)
+                sampled = bank._rng.sample(items, n)
                 bx, by = self._assemble_probe_batch(sampled, context=context, device=device)
                 if bx is None:
                     losses.append(None)
@@ -216,7 +214,13 @@ class PIDGBMethod(Method):
                 if context is not None and context.train_transform is not None:
                     tensor = context.train_transform(tensor)
                 else:
+                    # Fallback: apply the same dtype conversion and
+                    # channel-wise normalization that the eval transform
+                    # uses so the probe input scale matches the live batch.
                     tensor = tensor.float() / 255.0
+                    mean = torch.tensor([0.5071, 0.4867, 0.4408]).view(3, 1, 1)
+                    std = torch.tensor([0.2675, 0.2565, 0.2761]).view(3, 1, 1)
+                    tensor = (tensor - mean) / std
                 tensors.append(tensor)
 
             bx = torch.stack(tensors, dim=0).to(device)

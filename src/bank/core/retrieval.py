@@ -38,14 +38,20 @@ def sample_uniform(
     budget: int,
     rng: random.Random,
 ) -> list:
-    """Retrieve ``budget`` items uniformly at random across non-empty pools."""
+    """Retrieve ``budget`` items uniformly at random across non-empty pools.
+
+    Sampling is weighted proportionally to pool size so that each
+    stored exemplar has an equal probability of being drawn, matching
+    the standard Experience Replay convention.
+    """
     classes = [c for c, pool in bank.items() if pool]
     if not classes:
         return []
 
-    total_pool_size = sum(len(bank[c]) for c in classes)
+    pool_sizes = [len(bank[c]) for c in classes]
+    total_pool_size = sum(pool_sizes)
     if total_pool_size == 0:
         return []
 
-    c = rng.choices(classes, k=budget)
-    return [rng.choice(bank[cls]) for cls in c]
+    selected_classes = rng.choices(classes, weights=pool_sizes, k=budget)
+    return [rng.choice(bank[cls]) for cls in selected_classes]

@@ -61,19 +61,17 @@ class CIFAR100TaskView(BaseDataset):
     def __getitem__(self, index: int) -> tuple[int, torch.Tensor, torch.Tensor]:
         img_nhwc = self._raw_images[index]
         img_nchw = img_nhwc.permute(2, 0, 1).contiguous()
-        label = self._raw_targets[index].item()
+        label = self._raw_targets[index]
         if self._transform is not None:
             img_nchw = self._transform(img_nchw)
-        return index, img_nchw, torch.tensor(label, dtype=torch.long)
+        return index, img_nchw, label
 
     def __len__(self) -> int:
         return self._raw_targets.shape[0]
 
     @property
     def class_counts(self) -> list[int]:
-        counts = torch.zeros(self._num_classes, dtype=torch.long)
-        for c in self._class_indices:
-            counts[c] = int((self._raw_targets == c).sum().item())
+        counts = torch.bincount(self._raw_targets, minlength=self._num_classes)
         return counts.tolist()
 
     @property

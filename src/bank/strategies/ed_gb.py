@@ -68,7 +68,7 @@ class ExposureDebtGhostBank(AbstractGhostBank):
             debt = compute_debt(exposure, target_per_class)
             allocation = allocate_by_debt(debt, budget)
         else:
-            num_classes = len(self._bank) + 1
+            num_classes = max(self._bank.keys()) + 1 if self._bank else 0
             debt = [0.0] * num_classes
             allocation = [0] * num_classes
 
