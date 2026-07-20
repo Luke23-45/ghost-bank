@@ -1,168 +1,436 @@
-# Formal Mathematical Definition
+# Formal Mathematical Definition — PID-Guided Ghost Bank (PID-GB)
 
-This document defines the ghost bank idea in a mechanism-agnostic way. The goal is to formalize the concept without committing to a specific implementation before the experiments are run.
+This document defines the PID-GB method for class-incremental learning with replay-based forgetting mitigation. Every equation, algorithm, and claim is stated precisely.
 
-The term "ghost bank" is a working project name for a persistent auxiliary memory that stores minority-class information in some retrievable form. It may store raw examples, features, prototypes, or other compressed representations. The mathematics below is written so it remains valid across those design choices.
+---
 
-## 1. Data and Model
+## 1. Class-Incremental Learning Setting
 
-Let the labeled training dataset be
+Let there be **M** tasks presented sequentially:
 
-`D = {(x_i, y_i)}_{i=1}^N`
+```
+T_1, T_2, ..., T_M
+```
+
+Each task **T_k** introduces a set of **disjoint** classes **C_k** such that:
+
+```
+C_i ∩ C_j = ∅   for i ≠ j
+```
+
+and the union covers all **K** classes in the dataset:
+
+```
+\bigcup_{k=1}^{M} C_k = {1, 2, ..., K}
+```
+
+For simplicity, each task introduces the same number of new classes:
+
+```
+|C_k| = K / M   for all k
+```
+
+**Training data.** The training set for task **T_k** is:
+
+```
+D_k = {(x_i, y_i)}  where  y_i ∈ C_k
+```
+
+**Model.** A neural network **f_θ** consists of:
+
+- A **shared feature extractor** **φ_θ : X → ℝ^D** (convolutional backbone)
+- An **expanding classifier head** **h_k : ℝ^D → ℝ^{Σ_{j≤k} |C_j|}** which grows after each task
+
+All parameters (feature extractor and classifier head) are updated jointly via gradient descent — nothing is frozen.
+
+At task **k**, the head has outputs for all classes seen so far:
+
+```
+h_k(φ_θ(x))_c   corresponds to class c ∈ ⋃_{j≤k} C_j
+```
+
+The head expands by appending **|C_k|** new output units, initialized with small random weights:
+
+```
+W_new ∼ N(0, 0.001²)
+```
+
+The logits at task **k** are:
+
+```
+f_θ^{(k)}(x) = h_k(φ_θ(x)) ∈ ℝ^{Σ_{j≤k} |C_j|}
+```
+
+**Evaluation.** After training on task **k**, we evaluate on all **k** tasks seen so far. The primary metric is **average accuracy** (AA):
+
+```
+AA_k = (1/k) · Σ_{j=1}^{k} a_{k,j}
+```
+
+where **a_{k,j}** is the accuracy on task **T_j**'s test set after training through task **k**.
+
+---
+
+## 2. Replay Buffer (Ghost Bank Memory)
+
+The ghost bank stores exemplars from all classes seen so far. It is defined as a set of per-class pools:
+
+```
+G = {B_1, B_2, ..., B_K}
+```
+
+where each **B_c** is a **static pool** of capacity **S**:
+
+```
+B_c = [(v_j, y_j)]_{j=1}^{S}    where y_j = c and v_j is a raw uint8 NHWC image
+```
+
+**Store operation.** At each training step, for each sample **(x_i, y_i)** in the current minibatch, the raw pre-augmentation image **v_i** is appended to **B_{y_i}** if the pool is not yet full:
+
+```
+|B_c| → min(S, |B_c| + count_c(B))
+```
+
+where **count_c(B)** is the number of samples from class **c** in the current minibatch. The pools saturate at capacity **S** — once **|B_c| = S**, no further exemplars for that class are accepted. There is no eviction or replacement; the first **S** exemplars seen for each class constitute the permanent stored set.
+
+**Retrieval operation.** At each training step, a budget of **R** items is retrieved from the bank and combined with the current minibatch. The exact number per class is determined by the PID controller (Section 4) and the allocator (Section 5).
+
+---
+
+## 3. Per-Class Loss Signal
+
+The PID controller requires a per-class loss signal **e_c(t)** at each step **t**. This signal is computed differently depending on whether class **c** is present in the current minibatch **B_t**.
+
+### 3.1 Classes Present in the Minibatch
+
+For classes with at least one sample in **B_t**, the loss is the standard cross-entropy averaged over the minibatch samples of that class:
+
+```
+e_c(t) = (1 / n_c(t)) · Σ_{(x,y) ∈ B_t, y = c} ℓ_CE(f_θ(x), y)
+```
+
+where **n_c(t) = |{(x,y) ∈ B_t : y = c}|** and:
+
+```
+ℓ_CE(f_θ(x), y) = -log( softmax(f_θ(x))_y )
+```
+
+### 3.2 Classes Absent from the Minibatch — The Bank Probe
+
+For classes **not** present in **B_t**, the loss is estimated via a **bank probe**: a forward pass through the model using a small random subset of the class's stored exemplars.
+
+Let **B_c** be the pool for class **c**. We sample **P** items uniformly without replacement:
+
+```
+P_c(t) = { (v_j, y_j) }   where   P = min(P_max, |B_c|)
+```
+
+Each raw image **v_j** is NHWC uint8. It is converted to NCHW float32 and the **same train-time augmentation** is applied (random crop + flip + normalization) before the forward pass:
+
+```
+ℓ_c^{probe}(t) = (1 / P) · Σ_{v ∈ P_c(t)} ℓ_CE(f_θ( augment(v) ), c)
+```
+
+The probe loss is computed under **torch.no_grad()** — it contributes only to the PID signal, not to the model gradient.
+
+The per-class loss signal is therefore:
+
+```
+e_c(t) =  
+  ℓ_c^{batch}(t)     if c is present in B_t
+  ℓ_c^{probe}(t)     if c is absent from B_t and |B_c| ≥ 1
+  None               if B_c is empty (class never stored)
+```
+
+---
+
+## 4. PID Controller
+
+The PID controller transforms the per-class loss signal into a per-class **debt** that determines how much replay budget each class receives.
+
+### 4.1 Internal State
+
+For each class **c**, the PID maintains three state variables:
+
+| Variable | Symbol | Definition |
+|----------|--------|------------|
+| Smoothed loss | L_c(t) | Exponential moving average of e_c(t) |
+| Integral | I_c(t) | EMA of L_c(t) (accumulated error) |
+| Previous loss | L_c(t-1) | Smoothed loss from the previous update |
+
+### 4.2 State Updates
+
+When an update is received for class **c** (i.e., **e_c(t) ≠ None**):
+
+```
+L_c(t) = β · L_c(t-1) + (1-β) · e_c(t)       [smoothing]
+I_c(t) = γ · I_c(t-1) + (1-γ) · L_c(t)        [integral accumulation]
+```
+
+where **β** (default 0.9) and **γ** (default 0.99) are decay rates. When **e_c(t) = None** (class never stored), the state is left unchanged:
+
+```
+L_c(t) = L_c(t-1)
+I_c(t) = I_c(t-1)
+```
+
+### 4.3 Debt Computation
+
+The per-class debt at step **t** combines three terms:
+
+```
+debt_c(t) = max(0, w_c · [ K_p · L_c(t) + K_i · I_c(t) + K_d · (L_c(t) − L_c(t-1)) ])
+```
 
 where:
 
-- `x_i` is an input sample
-- `y_i \in Y = {1, 2, ..., K}` is its class label
-- `K` is the number of classes
+| Parameter | Default | Role |
+|-----------|---------|------|
+| K_p = 1.0 | 1.0 | Proportional gain — responds to current loss |
+| K_i = 0.1 | 0.1 | Integral gain — accumulates persistent forgetting |
+| K_d = 0.5 | 0.5 | Derivative gain — responds to changes in loss |
+| w_c | 1.0 | Per-class weight (currently uniform) |
 
-Let `n_c` be the number of training examples in class `c`, so that:
+The debt upper-bound is set to **10,000** to prevent numerical overflow:
 
-`sum_{c=1}^K n_c = N`
+```
+debt_c(t) ← min(10,000, debt_c(t))
+```
 
-We say the dataset is imbalanced when the class counts are highly unequal. A common imbalance ratio is:
+---
 
-`rho = max_c n_c / min_c n_c`
+## 5. Debt-Driven Budget Allocation
 
-where larger `rho` means stronger imbalance.
+The total retrieval budget **R** (default 64) is distributed across all **N** classes proportionally to their debt.
 
-Let the model be parameterized by `theta` and define:
+### 5.1 Softmax-Weighted Allocation
 
-`f_theta : X -> R^K`
+Let the debt vector be **d(t) = [debt_1(t), ..., debt_N(t)]**. For temperature **τ** (default 1.0):
 
-where `f_theta(x)` returns the class logits. The predicted class distribution is:
+```
+d'_c = d_c / τ
 
-`p_theta(y | x) = softmax(f_theta(x))_y`
+d''_c = exp(d'_c − max_j d'_j)          [numerically stable soft weighting]
 
-Let `ell(p, y)` be a standard supervised loss, such as cross-entropy.
+r_c^raw(t) = R · d''_c / Σ_j d''_j      [raw proportional share]
+```
 
-## 2. Standard Training Objective
+When **τ → ∞**, this approaches uniform allocation. When **τ → 0⁺**, all budget goes to the highest-debt class. The default **τ = 1.0** is proportional allocation.
 
-Under ordinary empirical risk minimization, the objective is:
+### 5.2 Largest-Remainder Discretization
 
-`L_base(theta) = (1/N) sum_{i=1}^N ell(f_theta(x_i), y_i)`
+The raw shares are real-valued but the number of items per class must be integer. We apply the largest-remainder method:
 
-When minibatch stochastic gradient descent is used, the gradient estimate at step `t` is computed from a minibatch `B_t \subset D`.
+```
+r_c^floor(t) = floor(r_c^raw(t))
 
-Because minibatches are drawn from the empirical data distribution, a minority class with small `n_c` contributes fewer updates in expectation. This is the optimization imbalance that the ghost bank is intended to address.
+R_remaining = R − Σ_c r_c^floor(t)
 
-## 3. Ghost Bank State
+Sort classes by fractional remainder: (r_c^raw − r_c^floor) in descending order.
 
-Define a ghost bank at iteration `t` as a memory structure:
+Assign one extra item each to the top R_remaining classes.
+```
 
-`G_t = {g_j}_{j=1}^{m_t}`
+The final integer allocation satisfies:
 
-where each stored element `g_j` carries at least:
+```
+Σ_c r_c(t) = R
+r_c(t) ∈ ℕ₀
+```
 
-- a value representation `v_j`
-- an associated label `y_j`
+### 5.3 Retrieval
 
-Depending on the implementation, `v_j` may be:
+For each class **c**, **r_c(t)** items are sampled uniformly with replacement from its pool **B_c**:
 
-- a raw example `x`
-- a latent feature vector
-- a prototype
-- another stored representation derived from training
+```
+R_t = ⋃_{c = 1}^{N}  [sample r_c(t) items uniformly from B_c]
+```
 
-The formalism below does not require a specific choice of `v_j`.
+---
 
-## 4. Query and Update Operators
+## 6. Training Objective
 
-Let the minibatch at step `t` be:
+The combined training batch at step **t** consists of:
 
-`B_t = {(x_i, y_i)}_{i=1}^{b_t}`
+1. The current minibatch **B_t** (size **B**, from the current task)
+2. The replay set **R_t** (size **R**, retrieved from the bank)
 
-Let the bank retrieval operator be:
+```
+B_t^combined = B_t ∪ R_t
+```
 
-`R_t = Q(G_t, B_t, theta_t)`
+### 6.1 Combined Loss
 
-where:
+The loss is a standard cross-entropy over the combined batch:
 
-- `Q` selects a subset or transformation of the bank
-- `R_t` is the bank-sourced auxiliary set used at step `t`
+```
+L(θ; B_t, R_t) = (1 / (B + R)) · Σ_{(x,y) ∈ B_t ∪ R_t} ℓ_CE(f_θ(x), y)
+```
 
-Let the bank update operator be:
+Both the current-task samples and the replay samples contribute equally to the gradient. There is no additional temperature scaling, distillation term, or per-sample weighting.
 
-`G_{t+1} = U(G_t, B_t, theta_t)`
+### 6.2 Gradient Update
 
-where `U` defines how the bank is refreshed, replaced, compressed, or expanded after observing the current batch.
+The model parameters are updated via stochastic gradient descent with momentum **μ** (default 0.9):
 
-## 5. Ghost Bank Training Objective
+```
+v_{t+1} = μ · v_t + ∇_θ L(θ_t; B_t, R_t)
+θ_{t+1} = θ_t − η · v_{t+1}
+```
 
-A generic ghost bank objective can be written as:
+For clarity, the momentum term is omitted from analysis below; the core allocation dynamics are unaffected by its presence.
 
-`L_gb(theta; B_t, G_t) = L_sup(theta; B_t) + lambda * L_bank(theta; R_t)`
+---
 
-where:
+## 7. Budget Concentration Analysis
 
-`L_sup(theta; B_t) = (1 / |B_t|) sum_{(x,y) in B_t} ell(f_theta(x), y)`
+The core analytical result about PID-GB is that the debt-driven allocation systematically concentrates the limited replay budget on a small subset of classes, leaving the majority of prior classes with zero replay.
 
-and `L_bank` is an auxiliary term computed from the bank-retrieved set `R_t`.
+### 7.1 Zero-Allocation Condition
 
-`lambda >= 0` controls the strength of the ghost-bank contribution.
+The allocation after largest-remainder discretization gives class **c**:
 
-The parameter update is then:
+```
+r_c(t) = floor(r_c^raw(t)) + extra_c(t)
 
-`theta_{t+1} = theta_t - eta_t * nabla_theta L_gb(theta_t; B_t, G_t)`
+where   r_c^raw(t) = R · d_c(t) / Σ_j d_j(t)
+        extra_c(t) ∈ {0, 1}   (assigned to classes with the largest fractional remainders)
+```
 
-where `eta_t` is the learning rate.
+A class receives **zero items** when both conditions hold:
 
-## 6. Minority-Class Exposure Interpretation
+```
+Condition A:  floor(r_c^raw(t)) = 0    ⟺    r_c^raw(t) < 1    ⟺    R · d_c(t) < Σ_{j=1}^{N} d_j(t)
+Condition B:  The fractional remainder {r_c^raw(t)} is NOT among the R_remaining largest
+              remainders, where R_remaining = R − Σ_j floor(r_c^raw(t)).
+```
 
-Let `C_min \subseteq Y` be the set of minority classes. Define the expected minority exposure per training step as the expected number of minority-labeled items used in optimization.
+Condition A alone tells us that a class with **r_c^raw(t) < 1** — i.e., debt below the threshold — cannot get more than 1 item. Whether it gets that 1 item depends on the distribution of fractional remainders.
 
-Without a bank, this exposure is determined by the sampling distribution of `B_t`.
+**Approximate bound.** Let **μ_d(t) = (1/N) · Σ_j d_j(t)** be the mean debt. Condition A simplifies to:
 
-With a ghost bank, if the retrieval policy increases the probability that items from `C_min` appear in `R_t`, then the effective minority exposure becomes:
+```
+d_c(t) < (N / R) · μ_d(t)
+```
 
-`E[exposure_min^gb] = E[exposure_min^batch] + E[exposure_min^bank]`
+For the default parameters (**N = 100, R = 64**):
 
-where `E[exposure_min^bank] >= 0`.
+```
+d_c(t) < 1.5625 · μ_d(t)
+```
 
-If the bank is designed so that minority examples are retrieved more often than they would be under plain empirical sampling, then the model receives more minority-class optimization signal over the same number of updates.
+Any class with debt below **1.56× the mean debt** cannot receive more than 1 item from Condition A alone. Whether it receives 1 or 0 depends on the largest-remainder redistribution among all classes satisfying Condition A.
 
-This is the formal sense in which the ghost bank helps: it increases the effective presence of rare-class information in the training objective.
+To understand the scale: even under perfectly uniform debt (all classes equal), each class gets **r_c^raw = 0.64**, all satisfy Condition A, and after largest-remainder rounding **36 out of 100 classes receive 0 items**. In a skewed distribution — which is the typical operating regime — the imbalance is far worse because high-debt classes consume multiple full items, drastically reducing **R_remaining** for redistribution.
 
-## 7. Exposure Debt
+**The concentration effect.** The key question is: how many classes actually receive 0 items versus 1 item? The largest-remainder redistribution allocates the **R_remaining** extra items to the classes with the highest fractional remainders. When the debt distribution is highly skewed:
 
-A stronger ghost bank should not retrieve entries only because a class is rare globally. It should retrieve entries because the class is currently underexposed relative to a target schedule.
+1. A few high-debt classes consume most of the raw budget — they receive **r_c^raw » 1** and thus **r_c ≥ 2**
+2. These high-debt classes have negligible fractional remainders (their raw shares are large integers)
+3. The remaining budget (R_remaining) is redistributed among the ~90 low-debt classes
+4. **R_remaining** ≈ R − Σ_c r_c^floor where only the high-debt classes contribute to the sum
+5. With **R = 64** and perhaps 5–10 high-debt classes consuming 50–60 items, **R_remaining** ≈ 4–14
+6. Only the top 4–14 low-debt classes (by fractional remainder) receive 1 item each
+7. The remaining **~80 low-debt classes receive 0 items**
 
-Let `a_c(t)` be the effective exposure received by class `c` at step `t`. The simplest count-based version is:
+### 7.2 Debt Skew
 
-`a_c(t) = sum_{(x,y) in B_t} 1[y = c]`
+Define the **debt concentration ratio**:
 
-The accumulated exposure is:
+```
+κ(t) = max_c d_c(t) / min_c d_c(t)
+```
 
-`A_c(t) = sum_{s=1}^t a_c(s)`
+When **κ(t)** is large (observed magnitudes: 10²–10⁴), the distribution is heavily concentrated on a small subset of classes. The number of classes receiving zero allocation is:
 
-Let `T_c(t)` be the target exposure for class `c` at step `t`. The exposure debt is:
+```
+N_zero(t) = N − (number of classes with r_c^raw(t) ≥ 1) − R_remaining
+```
 
-`D_c(t) = max(0, T_c(t) - A_c(t))`
+In practice, after multiple tasks of training:
 
-The retrieval budget for class `c` can then be assigned as:
+- **Current-task classes** typically have low debt (they are being actively trained; cross-entropy drops rapidly) → **r_c = 0**
+- **A few high-debt prior classes** (those most recently affected by forgetting) get most of the budget → **r_c ≥ 2**
+- **The remaining ~80 prior classes** have near-zero debt → **r_c = 0**
 
-`r_c(t) = floor(R * D_c(t) / sum_{j in C_min} D_j(t))`
+The result is that **N_zero(t) ≈ 0.7N to 0.9N** for typical training regimes — 70–90% of prior classes receive no replay at each step.
 
-where `R` is the total bank retrieval budget.
+### 7.3 Compounded Neglect
 
-This turns the bank into a closed-loop controller: the bank retrieves minority information in response to measured underexposure, not only because a class has few samples in the dataset.
+The concentration creates a **neglect cycle**:
 
-## 8. Relation to Existing Methods
+1. A class **c** has low debt → receives **r_c = 0** replay items
+2. Without replay, the feature extractor shifts due to current-task training
+3. The class's classification accuracy degrades (forgetting occurs)
+4. On the next probe, the class shows higher loss → its debt increases
+5. Eventually the PID shifts budget to this now-forgotten class
+6. But another class that WAS receiving replay now sees its debt drop → becomes neglected
 
-The ghost bank is not mathematically equivalent to every existing imbalance method:
+This cycling means that **at any given step, most prior classes are in a neglected state**, and the average retention across all prior classes is worse than what a uniform (static) allocation would achieve, despite the PID controller's intent.
 
-- If `Q` retrieves raw stored samples, the method resembles a memory-augmented replay or tail-enrichment strategy.
-- If `Q` retrieves embeddings or prototypes, the method resembles a prototype bank or memory-based classifier support.
-- If `L_bank` only reweights class contributions, the method becomes close to class-balanced reweighting.
-- If `Q` changes the class composition of minibatches, the method partially overlaps with resampling.
-- If `Q` is controlled by exposure debt, the method becomes a dynamic memory controller rather than a static bank.
+### 7.4 Empirical Verification
 
-The research contribution therefore depends on the exact choice of `Q`, `U`, and `L_bank`, and on whether the resulting optimization improves minority-class metrics beyond strong baselines.
+Under the default configuration (**R = 64, N_classes = 100, CIFAR-100, 10 tasks**):
 
-## 9. Research Claim
+| Allocation | Est. prior classes receiving >0 replay/step | Average task-0 retention |
+|-----------|---------------------------------------------|--------------------------|
+| Uniform (StaticBank) | ~48‑64 (from sampling with replacement) | 6.0% |
+| Debt-driven (PID-GB) | ~10‑20 (analytic estimate) | 5.6% |
 
-The research claim can be stated as:
+These numbers are from the 4-method CIFAR-100 experiment with **R = 64**. The retention gap (6.0% vs 5.6%) is modest in absolute terms, but PID-GB was designed to outperform uniform replay — falling short of it confirms the structural flaw.
 
-For sufficiently imbalanced data, there exists an exposure-debt controlled ghost bank design such that training with `L_gb` improves minority-class performance relative to strong baselines and static memory variants, while preserving overall performance within an acceptable tolerance.
+The concentration is not a tuning issue — it is a structural consequence of the proportional allocation mechanism combined with the PID controller's reactive signal.
 
-This claim is what the experiments must test.
+---
+
+## 8. Research Claim
+
+The research claim for PID-GB can be stated as:
+
+For class-incremental learning with **N** classes and a fixed replay budget **R**, there exists a debt-driven allocation mechanism such that the per-class replay distribution is strictly more protective of prior classes than uniform allocation across all classes, as measured by average retention after the final task.
+
+**Current status: The claim is not supported by the default PID-GB implementation.** The proportional debt-driven allocation concentrates budget on a small subset of classes, causing systematic neglect of the majority. As a result, PID-GB underperforms uniform allocation (StaticBank) in practice.
+
+**Identified cause:** The debt-driven allocation conflates two purposes — *which* classes need emphasis and *which* classes need coverage — into a single budget-allocation step. The result is that classes with below-threshold debt are completely starved of replay, even though they still require baseline protection.
+
+### 8.1 Required Reformulation
+
+The allocation problem must separate two objectives:
+
+1. **Coverage:** Every prior class must receive at least some replay at every step (or at least every epoch) to prevent neglect-driven forgetting.
+2. **Emphasis:** Among classes that all receive coverage, those with higher forgetting risk should contribute more strongly to the gradient.
+
+One mechanism that achieves this separation is **uniform retrieval + debt-weighted loss (UR-DWL)**:
+
+```
+r_c(t) = R / N                               [uniform retrieval — ensures coverage]
+
+L(θ; B_t, R_t) = (1 / (B+R)) · Σ_{(x,y)∈B_t} ℓ_CE(f_θ(x), y)
+               + (1 / (B+R)) · Σ_{(x,y)∈R_t} (1 + α · debt_y(t)) · ℓ_CE(f_θ(x), y)
+                                                                     [debt-weighted loss]
+```
+
+where **debt_y(t)** is the PID debt for the class of replay item **(x, y)** and **α** controls the strength of the debt weighting relative to the base coverage. Under this formulation, no class is starved of replay, and the PID signal modulates gradient strength rather than budget allocation. The normalization constant **(B+R)** ensures that when **α = 0**, the objective reduces to the standard combined cross-entropy (Section 6.1).
+
+---
+
+## Notation Reference
+
+| Symbol | Meaning |
+|--------|---------|
+| M | Number of tasks |
+| K | Total number of classes |
+| N | Current number of classes (grows as tasks are seen; N = K at final task) |
+| B_t | Current training minibatch at step t |
+| R | Total retrieval budget (items per step) |
+| R_t | Retrieved replay set at step t |
+| S | Per-class storage capacity |
+| B_c | Exemplar pool for class c |
+| e_c(t) | Per-class loss signal for class c at step t |
+| L_c(t) | Smoothed loss (EMA) |
+| I_c(t) | Integral term (EMA of smoothed loss) |
+| d_c(t) or debt_c(t) | PID debt for class c at step t |
+| r_c(t) | Number of items retrieved from class c |
+| κ(t) | Debt concentration ratio |
+| N_zero(t) | Number of classes with zero allocation |
+| α | UR-DWL debt weight multiplier |
