@@ -317,14 +317,13 @@ def run_drkd(device, train_data, val_data, class_images, mean, std, *,
 
 
 def main():
+    global EPOCHS_PER_TASK
     p = argparse.ArgumentParser()
     p.add_argument("--seed", type=int, default=SEED)
     p.add_argument("--lam", type=float, default=LAMBDA)
     p.add_argument("--epochs", type=int, default=EPOCHS_PER_TASK,
                    help="epochs per task (default: 70)")
     args = p.parse_args()
-
-    global EPOCHS_PER_TASK
     EPOCHS_PER_TASK = args.epochs
 
     torch.manual_seed(args.seed); random.seed(args.seed); np.random.seed(args.seed)
