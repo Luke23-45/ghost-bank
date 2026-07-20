@@ -19,17 +19,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.data.cifar100 import CIFAR100DataModule, CIFAR100Config
 from src.data.cifar100.transforms import make_train_transform
 from src.models import ResNet
+from src.bank.core.retrieval import sample_by_allocation
 
 SEED = 13
 N_TASKS = 10
 N_CLASSES_PER_TASK = 10
-N_CLASSES_TOTAL = N_TASKS * N_CLASSES_PER_TASK          # 100
+N_CLASSES_TOTAL = N_TASKS * N_CLASSES_PER_TASK
 EPOCHS_PER_TASK = 70
 BATCH_SIZE = 128
 RETRIEVAL_BUDGET = 64
@@ -106,10 +108,6 @@ def _raw_to_tensor(raw):
     return raw.float() / 255.0 if raw.dtype == torch.uint8 else raw
 
 
-def _make_optim(model):
-    return torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
-
-
 class ReplayBank:
     def __init__(self, capacity: int, seed: int):
         self._bank: dict[int, list] = {}
@@ -133,19 +131,7 @@ class ReplayBank:
         base = budget // num_classes
         extra = budget - base * num_classes
         alloc = [base + (1 if i < extra else 0) for i in range(num_classes)]
-        return self._sample_by_allocation(self._bank, alloc, self._rng)
-
-    @staticmethod
-    def _sample_by_allocation(bank, alloc, rng):
-        result = []
-        classes = sorted(bank.keys())
-        for c, n in zip(classes, alloc):
-            pool = bank[c]
-            if len(pool) <= n:
-                result.extend(pool)
-            else:
-                result.extend(rng.sample(pool, n))
-        return result
+        return sample_by_allocation(self._bank, alloc, self._rng)
 
 
 class ExemplarBank:
@@ -181,35 +167,33 @@ def _per_class_acc(model, val_data, device):
     return accs
 
 
-# ── Baseline (no replay) ──
-
 def run_baseline(device, train_data, val_data):
     model = create_model(N_CLASSES_PER_TASK).to(device)
-    opt = _make_optim(model)
     for task_id in range(N_TASKS):
+        t1 = time.time()
         if task_id > 0:
             model.expand_head(N_CLASSES_PER_TASK)
+        opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
         loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
         for _ in range(EPOCHS_PER_TASK):
             for x, y in loader:
                 x, y = x.to(device), y.to(device)
                 loss = F.cross_entropy(model(x), y)
                 opt.zero_grad(); loss.backward(); opt.step()
+        print(f"    Task {task_id+1:2d}/{N_TASKS} done in {time.time()-t1:.0f}s")
     return _per_class_acc(model, val_data, device)
 
 
-# ── Uniform + CE (class-balanced retrieval + CE on all logits) ──
-
 def run_uniform_ce(device, train_data, val_data, mean, std):
     model = create_model(N_CLASSES_PER_TASK).to(device)
-    opt = _make_optim(model)
     bank = ReplayBank(CAPACITY_PER_CLASS, SEED)
     transform = make_train_transform(mean, std)
 
     for task_id in range(N_TASKS):
+        t1 = time.time()
         if task_id > 0:
             model.expand_head(N_CLASSES_PER_TASK)
-
+        opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
         loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
         for _ in range(EPOCHS_PER_TASK):
             for x, y in loader:
@@ -235,22 +219,27 @@ def run_uniform_ce(device, train_data, val_data, mean, std):
                     cx, cy = x, y
                 loss = F.cross_entropy(model(cx), cy)
                 opt.zero_grad(); loss.backward(); opt.step()
-
+        print(f"    Task {task_id+1:2d}/{N_TASKS} done in {time.time()-t1:.0f}s")
     return _per_class_acc(model, val_data, device)
 
-
-# ── DRKD ──
 
 def run_drkd(device, train_data, val_data, class_images, mean, std, *,
              lam: float = LAMBDA):
     model = create_model(N_CLASSES_PER_TASK).to(device)
-    transform = make_train_transform(mean, std)
     exemplar_bank = ExemplarBank(CAPACITY_PER_CLASS)
     teacher_state = None
 
-    for task_id in range(N_TASKS):
+    for task_id in tqdm(range(N_TASKS), desc="DRKD", leave=False):
         t1 = time.time()
-        if task_id > 0:
+        if task_id == 0:
+            opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
+            loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
+            for _ in range(EPOCHS_PER_TASK):
+                for x, y in loader:
+                    x, y = x.to(device), y.to(device)
+                    loss = F.cross_entropy(model(x), y)
+                    opt.zero_grad(); loss.backward(); opt.step()
+        else:
             num_old = task_id * N_CLASSES_PER_TASK
             model.expand_head(N_CLASSES_PER_TASK)
 
@@ -260,12 +249,9 @@ def run_drkd(device, train_data, val_data, class_images, mean, std, *,
             for p in teacher.parameters():
                 p.requires_grad_(False)
 
-            opt = torch.optim.SGD(
-                model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY,
-            )
-
+            opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
             loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
-            for epoch in range(EPOCHS_PER_TASK):
+            for _ in range(EPOCHS_PER_TASK):
                 for x, y in loader:
                     x, y = x.to(device), y.to(device)
                     logits_all = model(x)
@@ -295,11 +281,9 @@ def run_drkd(device, train_data, val_data, class_images, mean, std, *,
             for img in selected:
                 exemplar_bank.store_raw(img, c)
         teacher_state = {k: v.clone() for k, v in model.state_dict().items()}
-        elapsed = time.time() - t1
-        print(f"    Task {task_id+1:2d}/{N_TASKS} done in {elapsed:.0f}s")
+        tqdm.write(f"    Task {task_id+1:2d}/{N_TASKS} done in {time.time()-t1:.0f}s")
 
-    # Post-hoc classifier calibration
-    print("\n    Calibrating classifier across all 100 classes...", flush=True)
+    tqdm.write(f"    Calibrating classifier across all {N_CLASSES_TOTAL} classes...")
     model.eval()
     feat_dim = 512
     cal_features, cal_labels = [], []
@@ -307,12 +291,11 @@ def run_drkd(device, train_data, val_data, class_images, mean, std, *,
         imgs = exemplar_bank.items(c)
         if not imgs:
             continue
-        for raw in imgs:
-            t = _raw_to_tensor(raw).unsqueeze(0).to(device)
-            with torch.no_grad():
-                feat = get_features(model, t).cpu()
-            cal_features.append(feat)
-            cal_labels.append(c)
+        batch = torch.stack([_raw_to_tensor(raw) for raw in imgs]).to(device)
+        with torch.no_grad():
+            feats = get_features(model, batch).cpu()
+        cal_features.append(feats)
+        cal_labels.extend([c] * len(imgs))
 
     cal_features = torch.cat(cal_features)
     cal_labels = torch.tensor(cal_labels)
@@ -332,8 +315,6 @@ def run_drkd(device, train_data, val_data, class_images, mean, std, *,
     model.train()
     return _per_class_acc(model, val_data, device)
 
-
-# ── main ──
 
 def main():
     p = argparse.ArgumentParser()

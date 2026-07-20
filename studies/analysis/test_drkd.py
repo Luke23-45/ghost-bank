@@ -259,7 +259,16 @@ def run_drkd(device, train_data, val_data, class_images, mean, std, *,
     teacher_state = None
 
     for task_id in range(N_TASKS):
-        if task_id > 0:
+        if task_id == 0:
+            # First task: CE only (no old classes, no KD)
+            opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
+            loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
+            for _ in range(EPOCHS_PER_TASK):
+                for x, y in loader:
+                    x, y = x.to(device), y.to(device)
+                    loss = F.cross_entropy(model(x), y)
+                    opt.zero_grad(); loss.backward(); opt.step()
+        else:
             num_old = task_id * N_CLASSES_PER_TASK
 
             # Expand head
