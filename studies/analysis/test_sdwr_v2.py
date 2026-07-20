@@ -169,7 +169,14 @@ class ReplayBank:
             new_pool = []
             for item in pool:
                 raw, label = item[0], item[1]
-                x_aug = transform(raw).unsqueeze(0).to(device)
+                # NHWC uint8 → NCHW float [0,1] (same conversion as _augment)
+                if raw.dim() == 3 and raw.shape[-1] == 3:
+                    t = raw.permute(2, 0, 1).contiguous().float() / 255.0
+                elif raw.dtype == torch.uint8:
+                    t = raw.float() / 255.0
+                else:
+                    t = raw.float() if torch.is_tensor(raw) else torch.as_tensor(raw).float()
+                x_aug = transform(t).unsqueeze(0).to(device)
                 with torch.no_grad():
                     logit = model(x_aug).cpu().squeeze(0)
                 new_pool.append((raw, label, logit))
@@ -250,7 +257,14 @@ def _compute_drift(
                 raw, _ = item
                 continue  # no snapshot to compare against
 
-            x_aug = transform(raw).unsqueeze(0).to(device)
+            # NHWC uint8 → NCHW float [0,1] (same conversion as _augment)
+            if raw.dim() == 3 and raw.shape[-1] == 3:
+                t = raw.permute(2, 0, 1).contiguous().float() / 255.0
+            elif raw.dtype == torch.uint8:
+                t = raw.float() / 255.0
+            else:
+                t = raw.float() if torch.is_tensor(raw) else torch.as_tensor(raw).float()
+            x_aug = transform(t).unsqueeze(0).to(device)
             with torch.no_grad():
                 current_logit = model(x_aug)
             # Only compare the old-class portion matching snapshot dimensionality
