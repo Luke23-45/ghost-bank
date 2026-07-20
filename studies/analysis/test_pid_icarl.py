@@ -1,16 +1,16 @@
 """
-PID-iCaRL: iCaRL with per-class adaptive KD weights via PID controller.
+iCaRL + Gradient Masking on FC: preserves old-class decision boundaries.
 
-Extends iCaRL (Rebuffi et al. 2017) with two PID-driven enhancements:
-  1. Per-class λ_c for the distillation loss (forgotten classes get stronger KD)
-  2. Replay budget proportional to PID debt (forgotten classes get more exemplars)
+Standard iCaRL updates old-class FC weights during new-task training via the
+sigmoid BCE loss.  This causes old-class decision boundaries to drift.
 
-The probe (gradient-free) at each task boundary measures per-class sigmoid BCE
-on stored exemplars.  The PID controller converts this into per-class debt,
-which drives both λ_c and budget allocation.
+Gradient masking (from DRKD) zeros out gradients to old-class FC weights after
+backward, preventing drift entirely.  The feature extractor still adapts,
+guided by the distillation loss, while the old FC weights stay frozen at their
+original values from the end of each task.
 
 Run from repo root:
-  python studies/analysis/test_pid_icarl.py [--epochs 70] [--lam0 1.0] [--alpha 1.0]
+  python studies/analysis/test_icarl_fc.py [--epochs 70] [--lam 1.0]
 """
 from __future__ import annotations
 
@@ -29,7 +29,6 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.bank.core.pid_controller import PIDController
 from src.data.cifar100 import CIFAR100DataModule, CIFAR100Config
 from src.models import ResNet
 
@@ -47,14 +46,6 @@ WEIGHT_DECAY = 5e-4
 
 LAMBDA = 1.0
 TEMPERATURE = 2.0
-
-# PID hyperparameters (same as PID-DDC)
-K_P = 1.0
-K_I = 0.1
-K_D = 0.5
-PID_DECAY = 0.99
-PID_SMOOTH = 0.9
-ALPHA = 1.0
 
 
 def load_cifar100_data() -> tuple[list, list, list]:
@@ -167,80 +158,55 @@ class ExemplarMemory:
     def items(self, class_id: int) -> list:
         return self._bank.get(class_id, [])
 
-    def sample_for_replay(self, class_ids: list[int], budget: int, rng,
-                          per_class_budget: list[int] | None = None) -> list:
-        """Sample exemplars for replay.
+    def sample_for_replay(self, class_ids: list[int], budget: int, rng) -> list:
+        """Sample exemplars uniformly across classes for replay batch.
 
-        When per_class_budget is provided, each class gets that many slots
-        (allowing debt-driven allocation).  Otherwise, samples uniformly.
         Returns list of (raw_tensor, class_label) tuples.
         """
         if not class_ids or budget == 0:
             return []
+        per_class = max(1, budget // len(class_ids))
         result: list[tuple] = []
-        if per_class_budget is not None:
-            for c, alloc in zip(class_ids, per_class_budget):
-                pool = self._bank.get(c, [])
-                if not pool:
-                    continue
-                k = min(alloc, len(pool))
-                if k > 0:
-                    selected = rng.sample(pool, k)
-                    result.extend([(img, c) for img in selected])
-        else:
-            per_class = max(1, budget // len(class_ids))
-            for c in class_ids:
-                pool = self._bank.get(c, [])
-                if not pool:
-                    continue
-                k = min(per_class, len(pool))
-                selected = rng.sample(pool, k)
-                result.extend([(img, c) for img in selected])
+        for c in class_ids:
+            pool = self._bank.get(c, [])
+            if not pool:
+                continue
+            k = min(per_class, len(pool))
+            selected = rng.sample(pool, k)
+            result.extend([(img, c) for img in selected])
         if len(result) > budget:
-            rng = random.Random(42)
             result = rng.sample(result, budget)
         return result
 
 
-# ── iCaRL loss (with per-class λ support) ─────────────────────────────
+# ── iCaRL loss ────────────────────────────────────────────────────────
 
 def sigmoid_bce(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     prob = torch.sigmoid(logits)
     return F.binary_cross_entropy(prob, targets, reduction='mean')
 
 
-def icarl_loss_pid(logits_all: torch.Tensor, y: torch.Tensor,
-                   num_old: int, old_logits: torch.Tensor | None,
-                   lambda_c: torch.Tensor | None) -> torch.Tensor:
-    """iCaRL loss with per-class λ_c on the distillation term.
-
-    When lambda_c is None (task 0 or no old classes), falls back to
-    plain CE on new classes.
-    """
+def icarl_loss(logits_all: torch.Tensor, y: torch.Tensor,
+               num_old: int, old_logits: torch.Tensor | None,
+               lam: float) -> torch.Tensor:
     num_total = logits_all.shape[1]
     num_new = num_total - num_old
 
     targets = torch.zeros_like(logits_all)
     targets.scatter_(1, y.unsqueeze(1), 1.0)
 
-    # Classification loss on NEW classes
     new_logits = logits_all[:, num_old:]
     new_targets = targets[:, num_old:]
     loss_cls = sigmoid_bce(new_logits, new_targets)
 
-    if old_logits is None or num_old == 0 or lambda_c is None:
+    if old_logits is None or num_old == 0:
         return loss_cls * num_new
 
-    # Per-class weighted distillation on OLD classes
     old_logits_new = logits_all[:, :num_old]
     old_probs_teacher = torch.sigmoid(old_logits)
-    prob = torch.sigmoid(old_logits_new)
-    bce = F.binary_cross_entropy(prob, old_probs_teacher, reduction='none')
+    loss_dist = sigmoid_bce(old_logits_new, old_probs_teacher)
 
-    # (B, num_old) → (num_old,) per-class mean, then weight by λ_c and sum
-    loss_dist = (bce.mean(dim=0) * lambda_c).sum()
-
-    return loss_cls * num_new + loss_dist
+    return loss_cls * num_new + lam * loss_dist * num_old
 
 
 # ── NME classification ────────────────────────────────────────────────
@@ -267,81 +233,22 @@ def nme_classify(model: ResNet, exemplar_memory: ExemplarMemory,
     return best_class
 
 
-# ── PID probe and helpers ─────────────────────────────────────────────
 
-def compute_probe_losses_icarl(model: ResNet, exemplar_memory: ExemplarMemory,
-                               num_old: int, device) -> list[float | None]:
-    """Gradient-free probe: per-class sigmoid BCE on exemplars.
-
-    For each old class c, measures the BCE(sigmoid(logit), one-hot(c))
-    over only old-class logits.  Higher loss → more forgetting.
-    Returns list aligned with classes 0..num_old-1; None if too few exemplars.
-    """
-    model.eval()
-    losses: list[float | None] = []
-    with torch.no_grad():
-        for c in range(num_old):
-            imgs = exemplar_memory.items(c)
-            if not imgs or len(imgs) < 2:
-                losses.append(None)
-                continue
-            batch = torch.stack([_raw_to_tensor(raw) for raw in imgs]).to(device)
-            logits = model(batch)[:, :num_old]
-            target = torch.zeros_like(logits)
-            target[:, c] = 1.0
-            loss = F.binary_cross_entropy_with_logits(logits, target).item()
-            losses.append(loss)
-    model.train()
-    return losses
-
-
-def debt_to_lambda(debt: list[float], lam0: float, alpha: float) -> torch.Tensor:
-    """Convert per-class PID debt to per-class KD weight λ_c = lam0 · (1 + α · d_c)."""
-    arr = [lam0 * (1.0 + alpha * d) for d in debt]
-    return torch.tensor(arr, dtype=torch.float)
-
-
-def allocate_budget_proportional(debt: list[float | None],
-                                 total_budget: int) -> list[int]:
-    """Allocate replay budget proportionally to PID debt (floored at 0.1)."""
-    debt_arr = np.array([max(d, 0.1) if d is not None else 0.1 for d in debt])
-    weights = debt_arr / debt_arr.sum()
-    alloc = np.floor(weights * total_budget).astype(int)
-    remainder = int(total_budget - alloc.sum())
-    for idx in np.argsort(-weights):
-        if remainder <= 0:
-            break
-        alloc[idx] += 1
-        remainder -= 1
-    return alloc.tolist()
-
-
-def expand_pid_controller(pid: PIDController) -> PIDController:
-    """Expand PID controller by N_CLASSES_PER_TASK while preserving old state."""
-    new_num = pid.num_classes + N_CLASSES_PER_TASK
-    new_pid = PIDController(
-        num_classes=new_num,
-        K_p=K_P, K_i=K_I, K_d=K_D,
-        decay=PID_DECAY, smooth=PID_SMOOTH,
-    )
-    old_state = pid.state_dict()
-    new_state = new_pid.state_dict()
-    for key in old_state:
-        new_state[key][:pid.num_classes] = old_state[key]
-    new_pid.load_state_dict(new_state)
-    return new_pid
 
 
 # ── Run ───────────────────────────────────────────────────────────────
 
-def run_pid_icarl(device, train_data, val_data, class_images, *,
-                  lam0: float = LAMBDA, alpha: float = ALPHA):
+def run_icarl_fc(device, train_data, val_data, class_images, *, lam: float = LAMBDA):
+    """iCaRL with gradient masking on old-class FC weights.
+
+    Key difference from standard iCaRL: after backward, gradients for old-class
+    FC weights are zeroed out, preventing decision-boundary drift.
+    """
     model = create_model(N_CLASSES_PER_TASK).to(device)
     exemplar_memory = ExemplarMemory(CAPACITY_PER_CLASS, SEED)
     teacher_state = None
-    pid: PIDController | None = None
 
-    for task_id in tqdm(range(N_TASKS), desc="PID-iCaRL", leave=False):
+    for task_id in tqdm(range(N_TASKS), desc="iCaRL+FC", leave=False):
         t1 = time.time()
 
         if task_id == 0:
@@ -360,21 +267,7 @@ def run_pid_icarl(device, train_data, val_data, class_images, *,
             opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
             rng = random.Random(SEED + task_id)
 
-            # ── PID probe before training this task ──
-            probe_losses = compute_probe_losses_icarl(model, exemplar_memory, num_old, device)
-            raw_debt = pid.update(probe_losses)
-            lambda_c = debt_to_lambda(raw_debt, lam0, alpha).to(device)
-
-            # Per-class replay budget allocation
-            per_class_budget = allocate_budget_proportional(raw_debt, RETRIEVAL_BUDGET)
-
-            tqdm.write(
-                f"    Task {task_id+1:2d} — PID debts: "
-                f"max={max(raw_debt):.2f} mean={np.mean(raw_debt):.2f} "
-                f"λ range=[{lambda_c.min().item():.2f}, {lambda_c.max().item():.2f}]"
-            )
-
-            # ── Training with per-class weighted KD + debt-driven replay ──
+            # Training with exemplar replay + gradient masking
             loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
             old_class_ids = list(range(num_old))
             for _ in range(EPOCHS_PER_TASK):
@@ -383,7 +276,6 @@ def run_pid_icarl(device, train_data, val_data, class_images, *,
 
                     replay_raw = exemplar_memory.sample_for_replay(
                         old_class_ids, RETRIEVAL_BUDGET, rng,
-                        per_class_budget=per_class_budget,
                     )
                     if replay_raw:
                         rxs, rys = [], []
@@ -405,9 +297,17 @@ def run_pid_icarl(device, train_data, val_data, class_images, *,
                         with torch.no_grad():
                             teacher_logits = teacher(cx)
 
-                    loss = icarl_loss_pid(logits_all, cy, num_old,
-                                          teacher_logits, lambda_c)
-                    opt.zero_grad(); loss.backward(); opt.step()
+                    loss = icarl_loss(logits_all, cy, num_old, teacher_logits, lam)
+                    opt.zero_grad(); loss.backward()
+
+                    # Gradient masking: zero out old-class FC gradients
+                    # Old FC weights stay frozen at their original values
+                    if model.fc.weight.grad is not None:
+                        model.fc.weight.grad[:num_old] = 0
+                    if model.fc.bias is not None and model.fc.bias.grad is not None:
+                        model.fc.bias.grad[:num_old] = 0
+
+                    opt.step()
 
         # Store exemplars for current task via herding (ALL tasks, including task 0)
         start_c = task_id * N_CLASSES_PER_TASK
@@ -417,17 +317,6 @@ def run_pid_icarl(device, train_data, val_data, class_images, *,
             exemplar_memory.select_exemplars(c, model, device, CAPACITY_PER_CLASS)
 
         teacher_state = {k: v.clone() for k, v in model.state_dict().items()}
-
-        # Expand PID controller after task 0 (creates initial PID)
-        if task_id == 0:
-            pid = PIDController(
-                num_classes=N_CLASSES_PER_TASK,
-                K_p=K_P, K_i=K_I, K_d=K_D,
-                decay=PID_DECAY, smooth=PID_SMOOTH,
-            )
-        else:
-            pid = expand_pid_controller(pid)
-
         tqdm.write(f"    Task {task_id+1:2d}/{N_TASKS} done in {time.time()-t1:.0f}s")
 
     # ── Evaluate with NME ──
@@ -452,10 +341,8 @@ def main():
     global EPOCHS_PER_TASK
     p = argparse.ArgumentParser()
     p.add_argument("--seed", type=int, default=SEED)
-    p.add_argument("--lam0", type=float, default=LAMBDA,
-                   help="base KD weight λ₀ (default: 1.0)")
-    p.add_argument("--alpha", type=float, default=ALPHA,
-                   help="debt-to-lambda scaling α (default: 1.0)")
+    p.add_argument("--lam", type=float, default=LAMBDA,
+                   help="distillation weight (default: 1.0)")
     p.add_argument("--epochs", type=int, default=EPOCHS_PER_TASK,
                    help="epochs per task (default: 70)")
     args = p.parse_args()
@@ -474,17 +361,16 @@ def main():
     print(f"Train per task: {[len(d) for d in train_data]}", flush=True)
 
     print(f"\n{'='*70}", flush=True)
-    print(f"  PID-iCaRL 10-task benchmark", flush=True)
-    print(f"  lam0={args.lam0}, alpha={args.alpha}, epochs={EPOCHS_PER_TASK}", flush=True)
+    print(f"  iCaRL+FC-GM 10-task benchmark", flush=True)
+    print(f"  lam={args.lam}, epochs={EPOCHS_PER_TASK}", flush=True)
     print(f"{'='*70}", flush=True)
 
     t1 = time.time()
-    accs = run_pid_icarl(device, train_data, val_data, class_images,
-                         lam0=args.lam0, alpha=args.alpha)
+    accs = run_icarl_fc(device, train_data, val_data, class_images, lam=args.lam)
     elapsed = time.time() - t1
 
     avg = np.mean(accs)
-    print(f"\n  PID-iCaRL (lam0={args.lam0}, alpha={args.alpha})", flush=True)
+    print(f"\n  iCaRL+FC-GM (lam={args.lam})", flush=True)
     print(f"  {'-'*50}", flush=True)
     for i in range(N_TASKS):
         task_accs = accs[i*N_CLASSES_PER_TASK:(i+1)*N_CLASSES_PER_TASK]
@@ -501,7 +387,7 @@ def main():
     print(f"  {'StaticBank':<30s} {13.1:>8.1f}%", flush=True)
     print(f"  {'PID-GB':<30s} {10.9:>8.1f}%", flush=True)
     print(f"  {'iCaRL':<30s} {37.4:>8.1f}%", flush=True)
-    print(f"  {'PID-iCaRL (ours)':<30s} {avg*100:>8.1f}%", flush=True)
+    print(f"  {'iCaRL+FC-GM (ours)':<30s} {avg*100:>8.1f}%", flush=True)
     print(f"  {'DRKD (lam=1.0)':<30s} {18.1:>8.1f}%", flush=True)
     print(f"  {'PID-DDC (lam0=1.0, α=1.0)':<30s} {19.1:>8.1f}%", flush=True)
     print(f"{'='*70}", flush=True)
