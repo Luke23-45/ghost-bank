@@ -320,12 +320,12 @@ def run_icarl(device, train_data, val_data, class_images, *, lam: float = LAMBDA
                     loss = icarl_loss(logits_all, cy, num_old, teacher_logits, lam)
                     opt.zero_grad(); loss.backward(); opt.step()
 
-            # Store exemplars for current task via herding
-            start_c = task_id * N_CLASSES_PER_TASK
-            end_c = start_c + N_CLASSES_PER_TASK
-            for c in range(start_c, end_c):
-                exemplar_memory.store_all(c, class_images[c])
-                exemplar_memory.select_exemplars(c, model, device, CAPACITY_PER_CLASS)
+        # Store exemplars for current task via herding (ALL tasks, including task 0)
+        start_c = task_id * N_CLASSES_PER_TASK
+        end_c = start_c + N_CLASSES_PER_TASK
+        for c in range(start_c, end_c):
+            exemplar_memory.store_all(c, class_images[c])
+            exemplar_memory.select_exemplars(c, model, device, CAPACITY_PER_CLASS)
 
         teacher_state = {k: v.clone() for k, v in model.state_dict().items()}
         tqdm.write(f"    Task {task_id+1:2d}/{N_TASKS} done in {time.time()-t1:.0f}s")
