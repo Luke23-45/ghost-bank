@@ -1,17 +1,17 @@
 """
-iCaRL: Class-Incremental Learning with Exemplar Memory (Rebuffi et al. 2017).
+Corrected iCaRL: Class-Incremental Learning with Exemplar Memory (Rebuffi et al. 2017).
 
-Faithful implementation in the same framework as DRKD/PID-DDC for honest
-side-by-side comparison on the 10-task CIFAR-100 benchmark.
-
-Key differences from DRKD:
-  1. Exemplars ARE used in the gradient stream (replay during SGD)
-  2. Herding for exemplar selection (not random)
-  3. Sigmoid BCE + distillation loss (not softmax CE + KL)
-  4. Nearest-mean-of-exemplars (NME) at test time (not linear classifier)
+Changes from the previous version (all based on advisor feedback):
+  1. Fixed total memory K=2000, shrinking per-class budget (m = K/t).
+  2. Held-out probe set (30 images/class) reserved BEFORE herding,
+     NEVER eligible for replay — probe measures true generalisation,
+     not memorisation of replayed exemplars.
+  3. Re-herding of old classes when budget shrinks at each task boundary.
+  4. ExemplarMemory keeps the full herding pool alongside the selected set
+     so re-herding always operates on the original candidates.
 
 Run from repo root:
-  python studies/analysis/test_icarl.py [--epochs 70]
+  python studies/analysis/test_icarl.py [--epochs 70] [--lam 1.0]
 """
 from __future__ import annotations
 
@@ -40,7 +40,8 @@ N_CLASSES_TOTAL = 100
 EPOCHS_PER_TASK = 70
 BATCH_SIZE = 128
 RETRIEVAL_BUDGET = 64
-CAPACITY_PER_CLASS = 200
+HELD_OUT_SIZE = 30
+MEMORY_TOTAL = 2000
 LR = 0.1
 MOMENTUM = 0.9
 WEIGHT_DECAY = 5e-4
@@ -89,6 +90,12 @@ def prepare_task_data(class_images, val_split=0.2):
     return train_data, val_data
 
 
+def compute_per_class_budget(task_id: int) -> int:
+    """Shrinking per-class budget: m = K / (classes_seen_so_far)."""
+    num_seen = (task_id + 1) * N_CLASSES_PER_TASK
+    return MEMORY_TOTAL // num_seen
+
+
 def create_model(num_classes: int) -> ResNet:
     return ResNet(num_classes=num_classes, base_filters=64)
 
@@ -112,17 +119,49 @@ def _raw_to_tensor(raw):
     return raw.float() / 255.0 if raw.dtype == torch.uint8 else raw
 
 
+# ── Held-out probe ────────────────────────────────────────────────────
+
+def extract_held_out(class_images: list[list], size: int, seed: int
+                     ) -> tuple[dict[int, list], dict[int, list]]:
+    """Reserve `size` images per class for probe (never replayed).
+
+    Returns (held_out, herding_pool).
+    """
+    held_out: dict[int, list] = {}
+    herding_pool: dict[int, list] = {}
+    for c in range(len(class_images)):
+        imgs = list(class_images[c])
+        rng = random.Random(seed + c)
+        rng.shuffle(imgs)
+        held_out[c] = imgs[:size]
+        herding_pool[c] = imgs[size:]
+    return held_out, herding_pool
+
+
+def compute_probe_loss(model: ResNet, held_out_images: list,
+                       target_class: int, num_old: int,
+                       device) -> float:
+    """CE loss on old-class logits for held-out images of one class."""
+    model.eval()
+    with torch.no_grad():
+        batch = torch.stack([_raw_to_tensor(raw) for raw in held_out_images]).to(device)
+        logits = model(batch)[:, :num_old]
+        target = torch.full((len(held_out_images),), target_class,
+                            dtype=torch.long, device=device)
+        loss = F.cross_entropy(logits, target).item()
+    model.train()
+    return loss
+
+
 # ── Herding exemplar selection (iCaRL §6) ─────────────────────────────
 
 def herding_select(features: torch.Tensor, budget: int, rng) -> list[int]:
-    """Greedy herding: select `budget` indices minimizing mean distance to class mean."""
     mu = features.mean(dim=0, keepdim=True)
     selected = []
     selected_set = set()
     for _ in range(budget):
         best_idx = -1
         best_dist = float("inf")
-        # Compute mean of currently selected + candidate
         for i in range(len(features)):
             if i in selected_set:
                 continue
@@ -139,26 +178,24 @@ def herding_select(features: torch.Tensor, budget: int, rng) -> list[int]:
 
 
 class ExemplarMemory:
-    def __init__(self, capacity_per_class: int, seed: int):
-        self._bank: dict[int, list[torch.Tensor]] = {}
-        self._cap = capacity_per_class
-        self._rng = random.Random(seed)
+    """Exemplar memory with separate full-pool tracking for re-herding."""
 
-    def store_all(self, class_id: int, images: list):
-        """Store all images for a class (will be herded later)."""
-        self._bank[class_id] = list(images)
+    def __init__(self, seed: int):
+        self._rng = random.Random(seed)
+        self._bank: dict[int, list] = {}      # currently selected exemplars
+        self._pool: dict[int, list] = {}       # full herding pool (pre-herding)
+
+    def store_pool(self, class_id: int, images: list):
+        self._pool[class_id] = list(images)
 
     def select_exemplars(self, class_id: int, model: ResNet, device, budget: int):
-        """Run herding to select `budget` exemplars for class_id."""
-        imgs = self._bank.get(class_id, [])
+        imgs = self._pool.get(class_id, [])
         if not imgs:
             return
         budget = min(budget, len(imgs))
-        # Extract features for all images of this class
         batch = torch.stack([_raw_to_tensor(raw) for raw in imgs]).to(device)
         with torch.no_grad():
             feats = get_features(model, batch).cpu()
-        # Herding selection
         indices = herding_select(feats, budget, self._rng)
         self._bank[class_id] = [imgs[i] for i in indices]
 
@@ -166,10 +203,6 @@ class ExemplarMemory:
         return self._bank.get(class_id, [])
 
     def sample_for_replay(self, class_ids: list[int], budget: int, rng) -> list:
-        """Sample exemplars uniformly across classes for replay batch.
-
-        Returns list of (raw_tensor, class_label) tuples.
-        """
         if not class_ids or budget == 0:
             return []
         per_class = max(1, budget // len(class_ids))
@@ -181,7 +214,6 @@ class ExemplarMemory:
             k = min(per_class, len(pool))
             selected = rng.sample(pool, k)
             result.extend([(img, c) for img in selected])
-        # Trim to exact budget
         if len(result) > budget:
             result = rng.sample(result, budget)
         return result
@@ -190,7 +222,6 @@ class ExemplarMemory:
 # ── iCaRL loss ────────────────────────────────────────────────────────
 
 def sigmoid_bce(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    """Binary cross-entropy with sigmoid for multi-class."""
     prob = torch.sigmoid(logits)
     return F.binary_cross_entropy(prob, targets, reduction='mean')
 
@@ -198,21 +229,13 @@ def sigmoid_bce(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
 def icarl_loss(logits_all: torch.Tensor, y: torch.Tensor,
                num_old: int, old_logits: torch.Tensor | None,
                lam: float) -> torch.Tensor:
-    """iCaRL combined loss.
-
-    For new classes: BCE(sigmoid(logit), one-hot target)
-    For old classes (if old_logits provided): distillation
-        BCE(sigmoid(current_logit), sigmoid(old_logit))
-    """
     num_total = logits_all.shape[1]
     num_new = num_total - num_old
     device = logits_all.device
 
-    # One-hot targets for BCE
     targets = torch.zeros_like(logits_all)
     targets.scatter_(1, y.unsqueeze(1), 1.0)
 
-    # Classification loss on NEW classes: BCE(sigmoid(logit), target)
     new_logits = logits_all[:, num_old:]
     new_targets = targets[:, num_old:]
     loss_cls = sigmoid_bce(new_logits, new_targets)
@@ -220,7 +243,6 @@ def icarl_loss(logits_all: torch.Tensor, y: torch.Tensor,
     if old_logits is None or num_old == 0:
         return loss_cls * num_new
 
-    # Distillation on OLD classes: BCE(sigmoid(new_logit), sigmoid(old_logit))
     old_logits_new = logits_all[:, :num_old]
     old_probs = torch.sigmoid(old_logits_new)
     old_probs_teacher = torch.sigmoid(old_logits)
@@ -233,15 +255,9 @@ def icarl_loss(logits_all: torch.Tensor, y: torch.Tensor,
 
 def nme_classify(model: ResNet, exemplar_memory: ExemplarMemory,
                  x: torch.Tensor, num_classes: int, device) -> torch.Tensor:
-    """Nearest-mean-of-exemplars classification.
-
-    Computes class prototypes from stored exemplars, then assigns
-    the test sample to the class with the nearest prototype (L2 distance).
-    """
     model.eval()
     with torch.no_grad():
         feat = get_features(model, x.to(device))
-    # Compute prototypes for all classes seen so far
     best_class = torch.full((x.size(0),), -1, dtype=torch.long, device=device)
     best_dist = torch.full((x.size(0),), float("inf"), device=device)
     for c in range(num_classes):
@@ -259,18 +275,21 @@ def nme_classify(model: ResNet, exemplar_memory: ExemplarMemory,
     return best_class
 
 
-# ── Run ────────────────────────────────────────────────────────────────
+# ── Run ───────────────────────────────────────────────────────────────
 
-def run_icarl(device, train_data, val_data, class_images, *, lam: float = LAMBDA):
+def run_icarl(device, train_data, val_data, class_images, *,
+              lam: float = LAMBDA):
+    # ── Held-out probe setup (before any training) ──
+    held_out, herding_pool = extract_held_out(class_images, HELD_OUT_SIZE, SEED)
+
     model = create_model(N_CLASSES_PER_TASK).to(device)
-    exemplar_memory = ExemplarMemory(CAPACITY_PER_CLASS, SEED)
+    exemplar_memory = ExemplarMemory(SEED)
     teacher_state = None
 
     for task_id in tqdm(range(N_TASKS), desc="iCaRL", leave=False):
         t1 = time.time()
 
         if task_id == 0:
-            # First task: standard CE training
             opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
             loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
             for _ in range(EPOCHS_PER_TASK):
@@ -285,16 +304,14 @@ def run_icarl(device, train_data, val_data, class_images, *, lam: float = LAMBDA
             opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
             rng = random.Random(SEED + task_id)
 
-            # Training with exemplar replay
             loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
+            old_ids = list(range(num_old))
             for _ in range(EPOCHS_PER_TASK):
                 for x, y in loader:
                     x, y = x.to(device), y.to(device)
 
-                    # Retrieve exemplars for replay
-                    old_class_ids = list(range(num_old))
                     replay_raw = exemplar_memory.sample_for_replay(
-                        old_class_ids, RETRIEVAL_BUDGET, rng,
+                        old_ids, RETRIEVAL_BUDGET, rng,
                     )
                     if replay_raw:
                         rxs, rys = [], []
@@ -307,7 +324,6 @@ def run_icarl(device, train_data, val_data, class_images, *, lam: float = LAMBDA
                     else:
                         cx, cy = x, y
 
-                    # Combined loss
                     logits_all = model(cx)
                     teacher_logits = None
                     if teacher_state is not None:
@@ -320,17 +336,27 @@ def run_icarl(device, train_data, val_data, class_images, *, lam: float = LAMBDA
                     loss = icarl_loss(logits_all, cy, num_old, teacher_logits, lam)
                     opt.zero_grad(); loss.backward(); opt.step()
 
-        # Store exemplars for current task via herding (ALL tasks, including task 0)
+        # ── Post-task: herding with shrinking budget ──
+        budget = compute_per_class_budget(task_id)
         start_c = task_id * N_CLASSES_PER_TASK
         end_c = start_c + N_CLASSES_PER_TASK
+
+        # Store pool and select exemplars for NEW classes
         for c in range(start_c, end_c):
-            exemplar_memory.store_all(c, class_images[c])
-            exemplar_memory.select_exemplars(c, model, device, CAPACITY_PER_CLASS)
+            exemplar_memory.store_pool(c, herding_pool[c])
+            exemplar_memory.select_exemplars(c, model, device, budget)
+
+        # Re-herd OLD classes whose budget may have shrunk
+        if task_id > 0:
+            old_budget = compute_per_class_budget(task_id - 1)
+            if budget < old_budget:
+                for c in range(start_c):
+                    exemplar_memory.select_exemplars(c, model, device, budget)
 
         teacher_state = {k: v.clone() for k, v in model.state_dict().items()}
         tqdm.write(f"    Task {task_id+1:2d}/{N_TASKS} done in {time.time()-t1:.0f}s")
 
-    # ── Evaluate with NME ──
+    # ── NME evaluation ──
     tqdm.write(f"    Evaluating with NME...")
     model.eval()
     correct, total = {}, {}
@@ -372,8 +398,9 @@ def main():
     print(f"Train per task: {[len(d) for d in train_data]}", flush=True)
 
     print(f"\n{'='*70}", flush=True)
-    print(f"  iCaRL 10-task benchmark", flush=True)
+    print(f"  Corrected iCaRL 10-task benchmark", flush=True)
     print(f"  lam={args.lam}, epochs={EPOCHS_PER_TASK}", flush=True)
+    print(f"  Memory: total={MEMORY_TOTAL}, held_out={HELD_OUT_SIZE}/class", flush=True)
     print(f"{'='*70}", flush=True)
 
     t1 = time.time()
@@ -381,26 +408,14 @@ def main():
     elapsed = time.time() - t1
 
     avg = np.mean(accs)
-    print(f"\n  iCaRL (lam={args.lam})", flush=True)
+    print(f"\n  Corrected iCaRL (lam={args.lam})", flush=True)
     print(f"  {'-'*50}", flush=True)
     for i in range(N_TASKS):
         task_accs = accs[i*N_CLASSES_PER_TASK:(i+1)*N_CLASSES_PER_TASK]
         task_avg = np.mean(task_accs)
         print(f"    task {i}: {task_avg:.3f}  ({', '.join(f'{a:.3f}' for a in task_accs)})", flush=True)
     print(f"    avg overall: {avg:.3f}  [{elapsed:.0f}s]", flush=True)
-
     print(f"\n{'='*70}", flush=True)
-    print(f"  COMPARISON", flush=True)
-    print(f"{'='*70}", flush=True)
-    print(f"  {'Method':<30s} {'Avg':>8s}", flush=True)
-    print(f"  {'-'*40}", flush=True)
-    print(f"  {'Baseline (no replay)':<30s} {7.8:>8.1f}%", flush=True)
-    print(f"  {'StaticBank':<30s} {13.1:>8.1f}%", flush=True)
-    print(f"  {'PID-GB':<30s} {10.9:>8.1f}%", flush=True)
-    print(f"  {'iCaRL (ours)':<30s} {avg*100:>8.1f}%", flush=True)
-    print(f"  {'DRKD (lam=1.0)':<30s} {18.1:>8.1f}%", flush=True)
-    print(f"  {'PID-DDC (lam0=1.0, α=1.0)':<30s} {19.1:>8.1f}%", flush=True)
-    print(f"{'='*70}", flush=True)
 
 
 if __name__ == "__main__":

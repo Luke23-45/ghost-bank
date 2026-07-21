@@ -1,31 +1,27 @@
 """
-PID-Guided Distillation Replay (PID-GDR): iCaRL + per-class PID-weighted KL.
+Adaptive iCaRL (A-iCaRL): iCaRL with task-level PI-controlled distillation.
 
-Bridges the gap between decoupled distillation (DRKD/PID-DDC) and replay-based
-methods (iCaRL).  Key idea: use iCaRL's uniform exemplar replay for stability,
-but replace its sigmoid BCE distillation with per-class PID-weighted KL
-divergence on the full softmax over old classes — so classes experiencing more
-feature drift receive proportionally stronger distillation pressure.
+Adds one mechanism to corrected iCaRL: a PI controller automatically adjusts
+the global distillation weight λ based on held-out probe measurements of
+per-class forgetting.
 
-Key differences from iCaRL:
-  1. Softmax + KL divergence (with temperature)  instead of sigmoid BCE
-  2. Per-class PID weighting on the KL term      instead of uniform λ
-  3. Old FC rows frozen (gradient masked)        "only θ and new rows updated"
+Key differences from corrected iCaRL:
+  1. Held-out probe set (30/class) measures generalisation without
+     contamination from replay buffer memorisation.
+  2. After each task, the forgetting signal F_t drives a PI controller
+     that adapts λ for the next task.
+  3. Diagnostic logging reports the λ(t) and F(t) trajectories.
 
-Key differences from PID-DDC:
-  1. Exemplars IN the gradient stream             replay during SGD
-  2. Herding for exemplar selection               not random
-  3. NME classification at test time              not calibration
-  4. Per-task PID probe at task boundaries        (same as PID-DDC)
-
-Per the GDR proposal (§3.2 Step 3): old classifier rows are frozen to prevent
-decision-boundary drift; only θ (feature extractor) and new-class rows receive
-gradients.  Replay samples provide ground-truth CE signal through the frozen old
-weights via `∂L_CE/∂z_i · W_old[:,i]`, giving the backbone a direct learning
-signal absent in pure-decoupling methods.
+Modes:
+  Default (--lam L0):      PI-controlled λ starting from L0.
+  --fixed-lambda FLOAT:    Fixed-λ mode for grid sweep (no adaptation).
+  --force-lambda FLOAT:    Bypass PI entirely, force λ = value
+                           (regression check — must match corrected iCaRL).
 
 Run from repo root:
-  python studies/analysis/test_pid_gdr.py [--lam 1.0] [--alpha 1.0] [--freeze-old-fc] [--epochs 70]
+  python studies/analysis/test_a_icarl.py [--lam 1.0] [--epochs 70]
+  python studies/analysis/test_a_icarl.py --fixed-lambda 2.0
+  python studies/analysis/test_a_icarl.py --force-lambda 1.0
 """
 from __future__ import annotations
 
@@ -46,7 +42,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.data.cifar100 import CIFAR100DataModule, CIFAR100Config
 from src.models import ResNet
-from src.bank.core.pid_controller import PIDController
 
 SEED = 13
 N_TASKS = 10
@@ -55,22 +50,24 @@ N_CLASSES_TOTAL = 100
 EPOCHS_PER_TASK = 70
 BATCH_SIZE = 128
 RETRIEVAL_BUDGET = 64
-CAPACITY_PER_CLASS = 200
+HELD_OUT_SIZE = 30
+MEMORY_TOTAL = 2000
 LR = 0.1
 MOMENTUM = 0.9
 WEIGHT_DECAY = 5e-4
 
-LAMBDA = 1.0
-ALPHA = 1.0
+LAMBDA_0 = 1.0
+LAMBDA_MIN = 0.1
+LAMBDA_MAX = 5.0
 TEMPERATURE = 2.0
-FREEZE_OLD_FC = True
 
+F_TARGET = 0.05
 K_P = 1.0
 K_I = 0.1
-K_D = 0.5
-PID_DECAY = 0.99
-PID_SMOOTH = 0.9
+EMA_SMOOTH = 0.7
 
+
+# ── Data ──────────────────────────────────────────────────────────────
 
 def load_cifar100_data() -> tuple[list, list, list]:
     cfg = CIFAR100Config(
@@ -112,6 +109,15 @@ def prepare_task_data(class_images, val_split=0.2):
     return train_data, val_data
 
 
+# ── Budget ────────────────────────────────────────────────────────────
+
+def compute_per_class_budget(task_id: int) -> int:
+    num_seen = (task_id + 1) * N_CLASSES_PER_TASK
+    return MEMORY_TOTAL // num_seen
+
+
+# ── Model ─────────────────────────────────────────────────────────────
+
 def create_model(num_classes: int) -> ResNet:
     return ResNet(num_classes=num_classes, base_filters=64)
 
@@ -135,7 +141,36 @@ def _raw_to_tensor(raw):
     return raw.float() / 255.0 if raw.dtype == torch.uint8 else raw
 
 
-# ── Herding exemplar selection (iCaRL §6) ─────────────────────────────
+# ── Held-out probe ────────────────────────────────────────────────────
+
+def extract_held_out(class_images: list[list], size: int, seed: int
+                     ) -> tuple[dict[int, list], dict[int, list]]:
+    held_out: dict[int, list] = {}
+    herding_pool: dict[int, list] = {}
+    for c in range(len(class_images)):
+        imgs = list(class_images[c])
+        rng = random.Random(seed + c)
+        rng.shuffle(imgs)
+        held_out[c] = imgs[:size]
+        herding_pool[c] = imgs[size:]
+    return held_out, herding_pool
+
+
+def compute_probe_loss(model: ResNet, held_out_images: list,
+                       target_class: int, num_old: int,
+                       device) -> float:
+    model.eval()
+    with torch.no_grad():
+        batch = torch.stack([_raw_to_tensor(raw) for raw in held_out_images]).to(device)
+        logits = model(batch)[:, :num_old]
+        target = torch.full((len(held_out_images),), target_class,
+                            dtype=torch.long, device=device)
+        loss = F.cross_entropy(logits, target).item()
+    model.train()
+    return loss
+
+
+# ── Herding ───────────────────────────────────────────────────────────
 
 def herding_select(features: torch.Tensor, budget: int, rng) -> list[int]:
     mu = features.mean(dim=0, keepdim=True)
@@ -160,16 +195,16 @@ def herding_select(features: torch.Tensor, budget: int, rng) -> list[int]:
 
 
 class ExemplarMemory:
-    def __init__(self, capacity_per_class: int, seed: int):
-        self._bank: dict[int, list[torch.Tensor]] = {}
-        self._cap = capacity_per_class
+    def __init__(self, seed: int):
         self._rng = random.Random(seed)
+        self._bank: dict[int, list] = {}
+        self._pool: dict[int, list] = {}
 
-    def store_all(self, class_id: int, images: list):
-        self._bank[class_id] = list(images)
+    def store_pool(self, class_id: int, images: list):
+        self._pool[class_id] = list(images)
 
     def select_exemplars(self, class_id: int, model: ResNet, device, budget: int):
-        imgs = self._bank.get(class_id, [])
+        imgs = self._pool.get(class_id, [])
         if not imgs:
             return
         budget = min(budget, len(imgs))
@@ -199,53 +234,39 @@ class ExemplarMemory:
         return result
 
 
-# ── PID-GDR loss ──────────────────────────────────────────────────────
+# ── iCaRL loss ────────────────────────────────────────────────────────
 
-def pid_gdr_loss(logits_all: torch.Tensor, y: torch.Tensor,
-                 num_old: int, teacher_logits: torch.Tensor | None,
-                 lambda_c: torch.Tensor | None,
-                 temperature: float, lam: float) -> torch.Tensor:
-    """CE on new classes + PID-weighted KL on old classes (all samples).
+def sigmoid_bce(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    prob = torch.sigmoid(logits)
+    return F.binary_cross_entropy(prob, targets, reduction='mean')
 
-    CE is applied only to samples whose label >= num_old (new data).
-    KL is applied to all (B+R) samples over old-class logits.
 
-    Args:
-        logits_all:  (B+R, num_total) student logits
-        y:           (B+R,) labels
-        num_old:     number of old classes
-        teacher_logits: (B+R, num_old) or None
-        lambda_c:    (num_old,) per-class KD weights = (1 + α·debt_c) or None
-        temperature: distillation temperature τ
-        lam:         global KD multiplier
-    """
+def icarl_loss(logits_all: torch.Tensor, y: torch.Tensor,
+               num_old: int, old_logits: torch.Tensor | None,
+               lam: float) -> torch.Tensor:
     num_total = logits_all.shape[1]
     num_new = num_total - num_old
+    device = logits_all.device
+
+    targets = torch.zeros_like(logits_all)
+    targets.scatter_(1, y.unsqueeze(1), 1.0)
 
     new_logits = logits_all[:, num_old:]
-    new_mask = y >= num_old
-    if new_mask.any():
-        ce_loss = F.cross_entropy(new_logits[new_mask], y[new_mask] - num_old, reduction='mean')
-    else:
-        ce_loss = torch.tensor(0.0, device=logits_all.device)
+    new_targets = targets[:, num_old:]
+    loss_cls = sigmoid_bce(new_logits, new_targets)
 
-    if teacher_logits is None or num_old == 0 or lambda_c is None:
-        return ce_loss
+    if old_logits is None or num_old == 0:
+        return loss_cls * num_new
 
-    student_old = logits_all[:, :num_old] / temperature
-    teacher_old = teacher_logits / temperature
+    old_logits_new = logits_all[:, :num_old]
+    old_probs = torch.sigmoid(old_logits_new)
+    old_probs_teacher = torch.sigmoid(old_logits)
+    loss_dist = sigmoid_bce(old_logits_new, old_probs_teacher)
 
-    student_logp = F.log_softmax(student_old, dim=1)
-    teacher_p = F.softmax(teacher_old, dim=1)
-
-    lc = lambda_c.to(logits_all.device).unsqueeze(0)
-    kl = teacher_p * (torch.log(teacher_p + 1e-10) - student_logp)
-    kd_loss = (kl * lc).sum(dim=1).mean() * (temperature ** 2)
-
-    return ce_loss + lam * kd_loss
+    return loss_cls * num_new + lam * loss_dist * num_old
 
 
-# ── NME classification ────────────────────────────────────────────────
+# ── NME ───────────────────────────────────────────────────────────────
 
 def nme_classify(model: ResNet, exemplar_memory: ExemplarMemory,
                  x: torch.Tensor, num_classes: int, device) -> torch.Tensor:
@@ -269,55 +290,109 @@ def nme_classify(model: ResNet, exemplar_memory: ExemplarMemory,
     return best_class
 
 
-# ── PID probe ──────────────────────────────────────────────────────────
+# ── PI Controller ─────────────────────────────────────────────────────
 
-def compute_probe_losses(model: ResNet, exemplar_memory: ExemplarMemory,
-                         class_ids: list[int], num_old: int,
-                         device) -> list[float | None]:
-    """Gradient-free CE probe on old-class logits only.
+class PIController:
+    """Proportional-integral controller for global λ, no D term.
 
-    Returns per-class CE loss aligned with class_ids; None if insufficient
-    exemplars for that class.
+    Error: e_t = F_t - F_target  (forgetting relative to target).
+    Output: λ_t+1 = clamp(λ₀ + u_t, λ_min, λ_max).
     """
-    model.eval()
-    losses = []
-    with torch.no_grad():
-        for c in class_ids:
-            imgs = exemplar_memory.items(c)
-            if not imgs or len(imgs) < 2:
-                losses.append(None)
-                continue
-            batch = torch.stack([_raw_to_tensor(raw) for raw in imgs]).to(device)
-            logits = model(batch)[:, :num_old]
-            target = torch.full((len(imgs),), c, dtype=torch.long, device=device)
-            loss = F.cross_entropy(logits, target).item()
-            losses.append(loss)
-    model.train()
-    return losses
 
+    def __init__(self, lam0: float, lam_min: float, lam_max: float,
+                 K_p: float, K_i: float, ema_smooth: float):
+        self.lam0 = lam0
+        self.lam_min = lam_min
+        self.lam_max = lam_max
+        self.K_p = K_p
+        self.K_i = K_i
+        self.ema_smooth = ema_smooth
 
-def debt_to_lambda(debt: list[float], alpha: float) -> torch.Tensor:
-    """Convert per-class PID debt to per-class KD weight λ_c = 1 + α·debt_c."""
-    arr = [1.0 + alpha * d for d in debt]
-    return torch.tensor(arr, dtype=torch.float)
+        self.integral = 0.0
+        self.e_smooth = 0.0
+        self._initialised = False
+
+        # Diagnostics
+        self.lambda_history: list[float] = []
+        self.F_history: list[float] = []
+
+    def update(self, F_t: float, F_target: float) -> float:
+        """Compute new λ for the NEXT task. Call after each task t ≥ 1."""
+        e_t = F_t - F_target
+
+        # Initialise EMA on first call
+        if not self._initialised:
+            self.e_smooth = e_t
+            self._initialised = True
+        else:
+            self.e_smooth = self.ema_smooth * self.e_smooth + (1.0 - self.ema_smooth) * e_t
+
+        self.integral += self.e_smooth
+
+        # Anti-windup: clamp integral so output stays within bounds
+        I_max = (self.lam_max - self.lam_min) / (2.0 * max(self.K_i, 1e-8))
+        self.integral = max(-I_max, min(I_max, self.integral))
+
+        u_t = self.K_p * self.e_smooth + self.K_i * self.integral
+        lam_next = max(self.lam_min, min(self.lam_max, self.lam0 + u_t))
+
+        self.lambda_history.append(lam_next)
+        self.F_history.append(F_t)
+
+        return lam_next
+
+    def reset(self):
+        self.integral = 0.0
+        self.e_smooth = 0.0
+        self._initialised = False
 
 
 # ── Run ───────────────────────────────────────────────────────────────
 
-def run_pid_gdr(device, train_data, val_data, class_images, *,
-                lam: float = LAMBDA, alpha: float = ALPHA,
-                freeze_old_fc: bool = FREEZE_OLD_FC):
+def run_a_icarl(device, train_data, val_data, class_images, *,
+                lam0: float = LAMBDA_0,
+                fixed_lambda: float | None = None,
+                force_lambda: float | None = None):
+    # ── Held-out probe setup ──
+    held_out, herding_pool = extract_held_out(class_images, HELD_OUT_SIZE, SEED)
+
     model = create_model(N_CLASSES_PER_TASK).to(device)
-    exemplar_memory = ExemplarMemory(CAPACITY_PER_CLASS, SEED)
+    exemplar_memory = ExemplarMemory(SEED)
     teacher_state = None
 
-    total_classes_seen = 0
-    pid = None
-    old_class_ids: list[int] = []
+    # Reference probe losses stored after each class is first learned.
+    # Each class c is always probed with ref_num_old[c] (the number of old
+    # classes at the time the reference was stored), so the softmax denominator
+    # is constant across comparisons for that class.
+    ref_loss: dict[int, float] = {}
+    ref_num_old: dict[int, int] = {}
 
-    for task_id in tqdm(range(N_TASKS), desc="PID-GDR", leave=False):
+    # PI controller (bypassed in fixed/force modes)
+    if force_lambda is not None:
+        pi = None
+        lam_current = force_lambda
+    elif fixed_lambda is not None:
+        pi = None
+        lam_current = fixed_lambda
+    else:
+        pi = PIController(
+            lam0=lam0, lam_min=LAMBDA_MIN, lam_max=LAMBDA_MAX,
+            K_p=K_P, K_i=K_I, ema_smooth=EMA_SMOOTH,
+        )
+        lam_current = lam0
+
+    # lambda_used[t] = λ used to TRAIN task t
+    # lambda_set[t]  = λ set AFTER task t (for use in task t+1)
+    lambda_used: list[float] = []
+    lambda_set: list[float] = []
+    F_traj: list[float] = []
+
+    for task_id in tqdm(range(N_TASKS), desc="A-iCaRL", leave=False):
         t1 = time.time()
+        num_old = task_id * N_CLASSES_PER_TASK
+        num_total_classes = (task_id + 1) * N_CLASSES_PER_TASK
 
+        # ── Training with current λ ──
         if task_id == 0:
             opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
             loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
@@ -327,22 +402,11 @@ def run_pid_gdr(device, train_data, val_data, class_images, *,
                     loss = F.cross_entropy(model(x), y)
                     opt.zero_grad(); loss.backward(); opt.step()
         else:
-            num_old = task_id * N_CLASSES_PER_TASK
             model.expand_head(N_CLASSES_PER_TASK)
 
             opt = torch.optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
             rng = random.Random(SEED + task_id)
 
-            # ── PID probe at task boundary ──
-            probe_losses = compute_probe_losses(model, exemplar_memory, old_class_ids, num_old, device)
-            raw_debt = pid.update(probe_losses)
-            lambda_c = debt_to_lambda(raw_debt, alpha)
-
-            tqdm.write(f"    Task {task_id+1:2d} — PID debts: "
-                       f"max={max(raw_debt):.4f} mean={np.mean(raw_debt):.4f} "
-                       f"λc range=[{lambda_c.min().item():.4f}, {lambda_c.max().item():.4f}]")
-
-            # ── Training with exemplar replay + PID-weighted KD ──
             loader = DataLoader(train_data[task_id], BATCH_SIZE, shuffle=True)
             old_ids = list(range(num_old))
             for _ in range(EPOCHS_PER_TASK):
@@ -372,53 +436,61 @@ def run_pid_gdr(device, train_data, val_data, class_images, *,
                         with torch.no_grad():
                             teacher_logits = teacher(cx)
 
-                    loss = pid_gdr_loss(logits_all, cy, num_old, teacher_logits,
-                                        lambda_c, TEMPERATURE, lam)
-                    opt.zero_grad(); loss.backward()
+                    loss = icarl_loss(logits_all, cy, num_old, teacher_logits, lam_current)
+                    opt.zero_grad(); loss.backward(); opt.step()
 
-                    if freeze_old_fc:
-                        if model.fc.weight.grad is not None:
-                            model.fc.weight.grad[:num_old] = 0
-                        if model.fc.bias is not None and model.fc.bias.grad is not None:
-                            model.fc.bias.grad[:num_old] = 0
+        lambda_used.append(lam_current)
 
-                    opt.step()
+        # ── Forgetting measurement (AFTER training) ──
+        # Compare current model's probe loss to each class's stored reference.
+        # The adjusted λ is used for the NEXT task.
+        if task_id > 0 and pi is not None:
+            rel_incs = []
+            for c in range(num_old):
+                n_old = ref_num_old.get(c, num_old)
+                cur = compute_probe_loss(model, held_out[c], c, n_old, device)
+                ref = ref_loss.get(c)
+                if ref is not None and ref > 1e-8:
+                    inc = (cur - ref) / ref
+                    if inc > 0.0:
+                        rel_incs.append(inc)
+            F_t = float(np.mean(rel_incs)) if rel_incs else 0.0
 
-        # ── Herding: store exemplars for current task ──
+            lam_current = pi.update(F_t, F_TARGET)
+            F_traj.append(F_t)
+            lambda_set.append(lam_current)
+
+        # ── Herding ──
+        budget = compute_per_class_budget(task_id)
         start_c = task_id * N_CLASSES_PER_TASK
         end_c = start_c + N_CLASSES_PER_TASK
+
         for c in range(start_c, end_c):
-            exemplar_memory.store_all(c, class_images[c])
-            exemplar_memory.select_exemplars(c, model, device, CAPACITY_PER_CLASS)
+            exemplar_memory.store_pool(c, herding_pool[c])
+            exemplar_memory.select_exemplars(c, model, device, budget)
 
-        # ── Save teacher state ──
+        if task_id > 0:
+            old_budget = compute_per_class_budget(task_id - 1)
+            if budget < old_budget:
+                for c in range(start_c):
+                    exemplar_memory.select_exemplars(c, model, device, budget)
+
+        # ── Update reference probe losses for the just-learned classes ──
+        for c in range(start_c, end_c):
+            pl = compute_probe_loss(model, held_out[c], c, num_total_classes, device)
+            ref_loss[c] = pl
+            ref_num_old[c] = num_total_classes
+
         teacher_state = {k: v.clone() for k, v in model.state_dict().items()}
-        total_classes_seen += N_CLASSES_PER_TASK
+        tqdm.write(f"    Task {task_id+1:2d}/{N_TASKS} — "
+                   f"λ_used={lambda_used[-1]:.3f}  [{time.time()-t1:.0f}s]")
 
-        # ── Expand PID controller ──
-        if task_id == 0:
-            pid = PIDController(
-                num_classes=N_CLASSES_PER_TASK,
-                K_p=K_P, K_i=K_I, K_d=K_D,
-                decay=PID_DECAY, smooth=PID_SMOOTH,
-            )
-        else:
-            new_num = pid.num_classes + N_CLASSES_PER_TASK
-            new_pid = PIDController(
-                num_classes=new_num,
-                K_p=K_P, K_i=K_I, K_d=K_D,
-                decay=PID_DECAY, smooth=PID_SMOOTH,
-            )
-            old_state = pid.state_dict()
-            new_state = new_pid.state_dict()
-            for key in old_state:
-                new_state[key][:pid.num_classes] = old_state[key]
-            new_pid.load_state_dict(new_state)
-            pid = new_pid
-
-        old_class_ids = list(range(total_classes_seen))
-
-        tqdm.write(f"    Task {task_id+1:2d}/{N_TASKS} done in {time.time()-t1:.0f}s")
+    # ── Report trajectory ──
+    tqdm.write(f"    λ used per task: {[f'{v:.3f}' for v in lambda_used]}")
+    if lambda_set:
+        tqdm.write(f"    λ set after task: {[f'{v:.3f}' for v in lambda_set]}")
+    if F_traj:
+        tqdm.write(f"    F (forgetting) measured: {[f'{v:.4f}' for v in F_traj]}")
 
     # ── NME evaluation ──
     tqdm.write(f"    Evaluating with NME...")
@@ -435,20 +507,19 @@ def run_pid_gdr(device, train_data, val_data, class_images, *,
                 total[c] = total.get(c, 0) + 1
     accs = [correct[c] / total[c] if total.get(c, 0) > 0 else 0.0 for c in range(N_CLASSES_TOTAL)]
     model.train()
-    return accs
+    return accs, lambda_used, lambda_set, F_traj
 
 
 def main():
     global EPOCHS_PER_TASK
     p = argparse.ArgumentParser()
     p.add_argument("--seed", type=int, default=SEED)
-    p.add_argument("--lam", type=float, default=LAMBDA,
-                   help="global KD weight λ (default: 1.0)")
-    p.add_argument("--alpha", type=float, default=ALPHA,
-                   help="debt-to-lambda scaling α (default: 1.0)")
-    p.add_argument("--no-freeze-old-fc", action="store_false", dest="freeze_old_fc",
-                   default=FREEZE_OLD_FC,
-                   help="disable old-class FC freezing (default: frozen)")
+    p.add_argument("--lam", type=float, default=LAMBDA_0,
+                   help="base / initial λ (default: 1.0)")
+    p.add_argument("--fixed-lambda", type=float, default=None,
+                   help="fixed λ mode (grid sweep, no adaptation)")
+    p.add_argument("--force-lambda", type=float, default=None,
+                   help="force λ mode (regression check for corrected baseline)")
     p.add_argument("--epochs", type=int, default=EPOCHS_PER_TASK,
                    help="epochs per task (default: 70)")
     args = p.parse_args()
@@ -466,20 +537,31 @@ def main():
     train_data, val_data = prepare_task_data(class_images)
     print(f"Train per task: {[len(d) for d in train_data]}", flush=True)
 
+    mode = "PI-controlled"
+    if args.force_lambda is not None:
+        mode = f"force λ={args.force_lambda}"
+    elif args.fixed_lambda is not None:
+        mode = f"fixed λ={args.fixed_lambda}"
+
     print(f"\n{'='*70}", flush=True)
-    print(f"  PID-GDR 10-task benchmark", flush=True)
-    print(f"  lam={args.lam}, alpha={args.alpha}, tau={TEMPERATURE}", flush=True)
-    print(f"  freeze_old_fc={args.freeze_old_fc}, epochs={EPOCHS_PER_TASK}", flush=True)
+    print(f"  A-iCaRL 10-task benchmark", flush=True)
+    print(f"  mode={mode}, lam0={args.lam}", flush=True)
+    print(f"  F_target={F_TARGET}, K_p={K_P}, K_i={K_I}, ema={EMA_SMOOTH}", flush=True)
+    print(f"  epochs={EPOCHS_PER_TASK}", flush=True)
+    print(f"  Memory: total={MEMORY_TOTAL}, held_out={HELD_OUT_SIZE}/class", flush=True)
     print(f"{'='*70}", flush=True)
 
     t1 = time.time()
-    accs = run_pid_gdr(device, train_data, val_data, class_images,
-                       lam=args.lam, alpha=args.alpha,
-                       freeze_old_fc=args.freeze_old_fc)
+    accs, lambda_used, lambda_set, F_traj = run_a_icarl(
+        device, train_data, val_data, class_images,
+        lam0=args.lam,
+        fixed_lambda=args.fixed_lambda,
+        force_lambda=args.force_lambda,
+    )
     elapsed = time.time() - t1
 
     avg = np.mean(accs)
-    print(f"\n  PID-GDR (lam={args.lam}, alpha={args.alpha})", flush=True)
+    print(f"\n  A-iCaRL ({mode})", flush=True)
     print(f"  {'-'*50}", flush=True)
     for i in range(N_TASKS):
         task_accs = accs[i*N_CLASSES_PER_TASK:(i+1)*N_CLASSES_PER_TASK]
@@ -488,20 +570,6 @@ def main():
     print(f"    avg overall: {avg:.3f}  [{elapsed:.0f}s]", flush=True)
 
     print(f"\n{'='*70}", flush=True)
-    print(f"  COMPARISON", flush=True)
-    print(f"{'='*70}", flush=True)
-    print(f"  {'Method':<30s} {'Avg':>8s}", flush=True)
-    print(f"  {'-'*40}", flush=True)
-    print(f"  {'Baseline (no replay)':<30s} {7.8:>8.1f}%", flush=True)
-    print(f"  {'StaticBank':<30s} {13.1:>8.1f}%", flush=True)
-    print(f"  {'PID-GB':<30s} {10.9:>8.1f}%", flush=True)
-    print(f"  {'iCaRL':<30s} {37.4:>8.1f}%", flush=True)
-    print(f"  {'iCaRL+FC-GM':<30s} {1.8:>8.1f}%", flush=True)
-    print(f"  {'DRKD (lam=1.0)':<30s} {18.1:>8.1f}%", flush=True)
-    print(f"  {'PID-DDC (lam0=1.0, α=1.0)':<30s} {19.1:>8.1f}%", flush=True)
-    fc_str = "frozen" if args.freeze_old_fc else "trainable"
-    print(f"  {'PID-GDR (lam='+str(args.lam)+', α='+str(args.alpha)+', FC='+fc_str+')':<30s} {avg*100:>8.1f}%", flush=True)
-    print(f"{'='*70}", flush=True)
 
 
 if __name__ == "__main__":
