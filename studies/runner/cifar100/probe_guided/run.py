@@ -140,8 +140,12 @@ class ProbeGuidedCIFAR100Runner:
         self.overrides = overrides or []
 
     def compose_configs(self) -> list[tuple[DictConfig, str]]:
+        base_overrides = self.overrides.copy()
+        if not any(o.startswith("+runner=") for o in base_overrides):
+            base_overrides.insert(0, "+runner=probe_guided")
+
         with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
-            base_cfg = compose("config", overrides=self.overrides)
+            base_cfg = compose("config", overrides=base_overrides)
 
         configs: list[tuple[DictConfig, str]] = []
 
@@ -152,8 +156,7 @@ class ProbeGuidedCIFAR100Runner:
         )
         for method_name in method_names:
             with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
-                overrides = self.overrides + [
-                    "+runner=probe_guided",
+                overrides = base_overrides + [
                     "data=cifar100",
                     "model=ptm_resnet",
                     "training=cifar100",
@@ -549,5 +552,5 @@ class ProbeGuidedCIFAR100Runner:
 
 
 if __name__ == "__main__":
-    runner = ProbeGuidedCIFAR100Runner()
+    runner = ProbeGuidedCIFAR100Runner(overrides=sys.argv[1:])
     runner.run()

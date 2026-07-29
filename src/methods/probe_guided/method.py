@@ -126,7 +126,18 @@ class ProbeGuidedMethod(Method):
             return torch.tensor(0.0, device=device)
 
         allocation = self._current_allocation
-        if allocation is None or len(allocation) != num_classes:
+        if allocation is not None and len(allocation) == num_classes and sum(allocation) > 0:
+            alloc_sum = sum(allocation)
+            frac = [a * self.retrieval_budget / alloc_sum for a in allocation]
+            raw = [int(f) for f in frac]
+            remainders = sorted(
+                [(f - int(f), i) for i, f in enumerate(frac)],
+                key=lambda x: x[0], reverse=True,
+            )
+            for j in range(self.retrieval_budget - sum(raw)):
+                raw[remainders[j][1]] += 1
+            allocation = raw
+        else:
             allocation = allocate_uniform_fixed_total(
                 num_classes=num_classes,
                 total_budget=self.retrieval_budget,

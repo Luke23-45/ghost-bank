@@ -87,3 +87,5 @@ output/
 # But track the source package and configs
 !studies/output/
 !configs/output/
+
+docs/dev/t
