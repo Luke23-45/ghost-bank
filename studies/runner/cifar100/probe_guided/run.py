@@ -429,7 +429,7 @@ class ProbeGuidedCIFAR100Runner:
         metrics["allocation_history"] = json.dumps(method.allocation_history)
         metrics["probe/score_history"] = json.dumps(probe_history)
 
-        print(f"\n  Final avg accuracy: {final_avg_acc:.2f}%")
+        print(f"\n  Final avg accuracy: {final_avg_acc * 100:.2f}%")
         print(f"  Forgetting: {forget:.2f}")
         print(f"  Backward transfer: {bwt:.2f}")
         if "probe/spearman_r" in metrics:
