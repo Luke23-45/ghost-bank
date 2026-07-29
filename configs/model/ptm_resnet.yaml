@@ -1,0 +1,6 @@
+type: ptm
+backbone: resnet18
+pretrained: true
+freeze_backbone: true
+embedding_dim: 512
+classifier_mode: linear

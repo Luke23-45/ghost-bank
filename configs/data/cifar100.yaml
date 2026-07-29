@@ -10,3 +10,8 @@ num_tasks: 10
 classes_per_task: 10
 mean: [0.5071, 0.4867, 0.4408]
 std: [0.2675, 0.2565, 0.2761]
+probe_split_size: 30
+val_split_size: 20
+split_seed: 13
+memory_total: 2000
+probe_enabled: true

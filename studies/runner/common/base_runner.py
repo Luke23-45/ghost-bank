@@ -108,6 +108,11 @@ def create_datamodule(cfg: DictConfig) -> CIFAR100DataModule:
             classes_per_task=dc.get("classes_per_task", 10),
             mean=tuple(dc.get("mean", [0.5071, 0.4867, 0.4408])),
             std=tuple(dc.get("std", [0.2675, 0.2565, 0.2761])),
+            probe_split_size=dc.get("probe_split_size", 30),
+            val_split_size=dc.get("val_split_size", 20),
+            split_seed=dc.get("split_seed", 13),
+            memory_total=dc.get("memory_total", 2000),
+            probe_enabled=dc.get("probe_enabled", False),
         )
         return CIFAR100DataModule(config)
     raise ValueError(f"Unsupported data type: {dc.type}")

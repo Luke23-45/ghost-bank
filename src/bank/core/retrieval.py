@@ -55,3 +55,37 @@ def sample_uniform(
 
     selected_classes = rng.choices(classes, weights=pool_sizes, k=budget)
     return [rng.choice(bank[cls]) for cls in selected_classes]
+
+
+def sample_by_quota(
+    bank: Mapping[int, list],
+    allocation: Sequence[int],
+    rng: random.Random,
+) -> list:
+    """Retrieve items respecting per-class quotas.
+
+    Unlike ``sample_by_allocation`` which uses ``random.choices`` (with
+    replacement), this function samples **without** replacement when the
+    allocation is smaller than the pool size, and with replacement when
+    the allocation exceeds the pool.
+
+    This is suitable for memory-bank construction where each exemplar
+    should be distinct.
+    """
+    retrieved: list = []
+    for class_id, count in enumerate(allocation):
+        if count == 0:
+            continue
+        pool = bank.get(class_id, [])
+        if not pool:
+            LOGGER.debug(
+                "sample_by_quota: class %d has empty pool (allocation=%d), skipping",
+                class_id,
+                count,
+            )
+            continue
+        if count <= len(pool):
+            retrieved.extend(rng.sample(pool, k=count))
+        else:
+            retrieved.extend(rng.choices(pool, k=count))
+    return retrieved

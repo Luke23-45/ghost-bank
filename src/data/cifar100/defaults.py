@@ -20,6 +20,13 @@ class CIFAR100Config:
     mean: tuple = (0.5071, 0.4867, 0.4408)
     std: tuple = (0.2675, 0.2565, 0.2761)
 
+    # Probe-guided replay settings
+    probe_split_size: int = 30
+    val_split_size: int = 20
+    split_seed: int = 13
+    memory_total: int = 2000
+    probe_enabled: bool = True
+
     @property
     def raw_dir(self) -> str:
         return str(Path(self.root).resolve() / "raw")

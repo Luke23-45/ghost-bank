@@ -1,0 +1,9 @@
+name: frozen_baseline
+retrieval_budget: 0
+warmup_steps: 0
+memory_floor: 0
+gamma: 0.0
+beta: 1.0
+probe_smoothing: 0.0
+distillation_weight: 0.0
+calibrate: false

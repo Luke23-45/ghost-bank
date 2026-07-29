@@ -1,0 +1,4 @@
+experiment_name: cifar100_probe_guided
+seeds: [13]
+methods: [probe_guided, uniform_replay, frozen_baseline]
+epochs_per_task: 70
