@@ -117,3 +117,34 @@ def test_method_update_allocation_no_scores():
     method.update_allocation(None)
     assert method._current_allocation is not None
     assert sum(method._current_allocation) == 100
+
+
+def test_method_replay_uses_context_transform():
+    method = ProbeGuidedMethod(retrieval_budget=1, memory_total=10)
+    raw = torch.full((32, 32, 3), 7, dtype=torch.uint8)
+    method._exemplar_bank = {0: [(raw, 0)]}
+    method.set_replay_class_count(1)
+
+    captured: dict[str, torch.Tensor] = {}
+
+    def transform(x: torch.Tensor) -> torch.Tensor:
+        captured["input"] = x.clone()
+        return torch.ones_like(x, dtype=torch.float32)
+
+    class TinyModel(torch.nn.Module):
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            captured["replay_x"] = x.clone()
+            return torch.zeros(x.size(0), 1, device=x.device)
+
+    loss = method._compute_replay_loss(
+        TinyModel(),
+        torch.device("cpu"),
+        transform=transform,
+        rng=torch.Generator().manual_seed(0),
+    )
+
+    assert loss.item() >= 0.0
+    assert "input" in captured
+    assert "replay_x" in captured
+    assert captured["input"].shape == (3, 32, 32)
+    assert torch.allclose(captured["replay_x"], torch.ones(1, 3, 32, 32))

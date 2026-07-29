@@ -91,7 +91,12 @@ class ProbeGuidedMethod(Method):
         loss = F.cross_entropy(pl_module(x), y)
 
         if pl_module.global_step >= self.warmup_steps:
-            replay_loss = self._compute_replay_loss(pl_module, y.device)
+            replay_loss = self._compute_replay_loss(
+                pl_module,
+                y.device,
+                transform=context.train_transform if context is not None else None,
+                rng=context.augment_rng if context is not None else None,
+            )
             loss = loss + replay_loss
 
         if self.distillation_weight > 0.0 and self._prev_model_snapshot is not None:
@@ -112,6 +117,8 @@ class ProbeGuidedMethod(Method):
         self,
         pl_module,
         device: torch.device,
+        transform: object | None = None,
+        rng: torch.Generator | None = None,
     ) -> torch.Tensor:
         """Sample replay items from the exemplar bank and compute CE loss."""
         if (
@@ -157,8 +164,8 @@ class ProbeGuidedMethod(Method):
 
         replay_x = _augment_replay(
             replay_items,
-            transform=None,
-            rng=None,
+            transform=transform,
+            rng=rng,
             device=device,
         )
         replay_y = torch.tensor(
@@ -207,9 +214,20 @@ class ProbeGuidedMethod(Method):
             num_classes = max(self._exemplar_bank.keys()) + 1 if self._exemplar_bank else 0
 
         if probe_scores is not None:
+            active_scores = list(probe_scores[:num_classes])
+            if active_scores:
+                min_v = min(active_scores)
+                max_v = max(active_scores)
+                if max_v - min_v >= 1e-12:
+                    active_scores = [
+                        (score - min_v) / (max_v - min_v)
+                        for score in active_scores
+                    ]
+                else:
+                    active_scores = [0.0] * len(active_scores)
             padded_scores = [0.0] * num_classes
-            for c in range(min(len(probe_scores), num_classes)):
-                padded_scores[c] = probe_scores[c]
+            for c, score in enumerate(active_scores):
+                padded_scores[c] = score
         else:
             padded_scores = None
 
