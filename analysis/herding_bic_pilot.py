@@ -222,6 +222,7 @@ class HerdingReplayBank:
         total_selected = 0
         classes_used = 0
         model.eval()
+        model_device = next(model.parameters()).device
         with torch.inference_mode():
             for class_id, quota in enumerate(allocation):
                 pool = self._pool.get(class_id, [])
@@ -238,7 +239,7 @@ class HerdingReplayBank:
                 for start in range(0, len(pool), chunk_size):
                     end = min(start + chunk_size, len(pool))
                     raw_batch = torch.stack([_to_chw(item[0]) for item in pool[start:end]], dim=0)
-                    images_t = _transform_raw_batch(raw_batch, eval_transform).to(device)
+                    images_t = _transform_raw_batch(raw_batch, eval_transform).to(model_device)
                     feats = model.extract_features(images_t).detach().cpu()
                     feats_chunks.append(feats)
                 feats_all = torch.cat(feats_chunks, dim=0)
