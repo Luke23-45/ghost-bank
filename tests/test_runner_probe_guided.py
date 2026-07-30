@@ -207,3 +207,18 @@ def test_nme_evaluator_prefers_matching_prototype():
     assert len(rows) == 1
     assert rows[0][0] == pytest.approx(1.0)
     assert rows[0][1] == pytest.approx(1.0)
+
+
+def test_transform_raw_batch_handles_nhwc_and_nchw():
+    from studies.runner.cifar100.probe_guided.run import _transform_raw_batch
+
+    nhwc = torch.zeros(2, 32, 32, 3, dtype=torch.uint8)
+    nhwc[0, :, :, 0] = 255
+    nchw = nhwc.permute(0, 3, 1, 2).contiguous()
+
+    out_nhwc = _transform_raw_batch(nhwc, eval_transform=None)
+    out_nchw = _transform_raw_batch(nchw, eval_transform=None)
+
+    assert out_nhwc.shape == (2, 3, 32, 32)
+    assert out_nchw.shape == (2, 3, 32, 32)
+    assert torch.allclose(out_nhwc, out_nchw)

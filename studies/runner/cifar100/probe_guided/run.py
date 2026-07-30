@@ -128,12 +128,18 @@ def _compute_spearman_correlation(
 def _transform_raw_batch(raw_images: torch.Tensor, eval_transform) -> torch.Tensor:
     batch_list = []
     for i in range(raw_images.shape[0]):
-        img_nhwc = raw_images[i]
-        img_nchw = img_nhwc.permute(2, 0, 1).contiguous()
+        raw = raw_images[i]
+        if raw.dim() == 3 and raw.shape[-1] == 3 and raw.shape[0] != 3:
+            img_nchw = raw.permute(2, 0, 1).contiguous()
+        else:
+            img_nchw = raw.contiguous()
         if eval_transform is not None:
             batch_list.append(eval_transform(img_nchw))
         else:
-            batch_list.append(img_nchw.float() / 255.0)
+            img = img_nchw.float() / 255.0
+            if img.dim() == 3 and img.shape[-1] == 3 and img.shape[0] != 3:
+                img = img.permute(2, 0, 1).contiguous()
+            batch_list.append(img)
     return torch.stack(batch_list, dim=0)
 
 
