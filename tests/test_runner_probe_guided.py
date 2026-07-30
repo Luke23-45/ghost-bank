@@ -194,7 +194,7 @@ def test_nme_evaluator_prefers_matching_prototype():
         1: [(torch.tensor([[[0.0, 255.0, 0.0]]]), 1)],
     }
 
-    rows = _evaluate_with_nme(
+    row = _evaluate_with_nme(
         model,
         exemplar_bank,
         FakeDM(),
@@ -204,9 +204,9 @@ def test_nme_evaluator_prefers_matching_prototype():
         device=torch.device("cpu"),
     )
 
-    assert len(rows) == 1
-    assert rows[0][0] == pytest.approx(1.0)
-    assert rows[0][1] == pytest.approx(1.0)
+    assert len(row) == 2
+    assert row[0] == pytest.approx(1.0)
+    assert row[1] == pytest.approx(1.0)
 
 
 def test_transform_raw_batch_handles_nhwc_and_nchw():

@@ -180,7 +180,7 @@ def _evaluate_with_nme(
     current_task_id: int,
     eval_transform,
     device: torch.device,
-) -> list[list[float]]:
+) -> list[float]:
     """Evaluate seen tasks with a nearest-prototype classifier."""
     prototypes = _compute_nme_prototypes(
         model,
@@ -191,10 +191,9 @@ def _evaluate_with_nme(
     )
     proto_norm = F.normalize(prototypes, dim=-1)
 
-    accuracy_matrix: list[list[float]] = []
+    row = [0.0] * (current_task_id + 1)
     model.eval()
     with torch.no_grad():
-        row = [0.0] * (current_task_id + 1)
         for task_id in range(current_task_id + 1):
             test_loader = dm.get_task_test_loader(task_id)
             correct = 0
@@ -210,9 +209,7 @@ def _evaluate_with_nme(
                 total += y.numel()
 
             row[task_id] = float(correct / total) if total > 0 else 0.0
-        accuracy_matrix.append(row)
-
-    return accuracy_matrix
+    return row
 
 
 class ProbeGuidedCIFAR100Runner:
@@ -466,14 +463,17 @@ class ProbeGuidedCIFAR100Runner:
 
             # --- Phase 4: post-hoc calibration ---
             device = next(model.parameters()).device
+            print(f"  [{method_name}] Task {task_id + 1}: calibration", flush=True)
             self._run_calibration(
                 model, method, dm, current_num_classes, device, eval_transform,
             )
 
             # --- Phase 5: snapshot the calibrated model for the next task ---
+            print(f"  [{method_name}] Task {task_id + 1}: snapshot", flush=True)
             method.snapshot_model(pl_module)
 
             # --- Phase 6: evaluate on all seen classes ---
+            print(f"  [{method_name}] Task {task_id + 1}: linear eval", flush=True)
             with torch.no_grad():
                 model.eval()
                 row = [0.0] * num_tasks
@@ -488,7 +488,8 @@ class ProbeGuidedCIFAR100Runner:
                     row[prev_task] = task_acc
                 accuracy_matrix.append(row)
 
-            nme_rows = _evaluate_with_nme(
+            print(f"  [{method_name}] Task {task_id + 1}: NME eval", flush=True)
+            nme_row = _evaluate_with_nme(
                 model,
                 method._exemplar_bank,
                 dm,
@@ -497,7 +498,7 @@ class ProbeGuidedCIFAR100Runner:
                 eval_transform=eval_transform,
                 device=device,
             )
-            nme_accuracy_matrix.extend(nme_rows)
+            nme_accuracy_matrix.append(nme_row)
 
         # --- Final metrics ---
         final_avg_acc = average_accuracy(accuracy_matrix)
