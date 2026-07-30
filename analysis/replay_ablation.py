@@ -382,6 +382,8 @@ def _run_variant(
             logger=[csv_logger],
             enable_checkpointing=False,
         )
+        pl_module.train()
+        model.train()
         trainer.fit(pl_module, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
         model.to(device)
