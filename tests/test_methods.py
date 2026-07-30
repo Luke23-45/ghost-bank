@@ -9,6 +9,8 @@ import pytest
 import torch
 
 from src.bank.strategies.static import StaticReplayBank
+from src.bank.strategies.herding import HerdingReplayBank
+from src.methods.base import MethodContext
 from src.methods.baseline import BaselineMethod
 from src.methods.static_bank import StaticBankMethod
 from src.methods.uniform_herding import UniformHerdingMethod
@@ -41,6 +43,13 @@ def _make_batch(
     x = torch.randn(batch_size, FEATURE_DIM, requires_grad=True)
     y = torch.randint(0, num_classes, (batch_size,))
     return x, y
+
+
+def _make_context(batch_size: int = BATCH_SIZE) -> MethodContext:
+    raw_x = torch.randn(batch_size, 3, 4, 4)
+    raw_y = torch.randint(0, NUM_CLASSES, (batch_size,))
+    raw_indices = torch.arange(batch_size, dtype=torch.long)
+    return MethodContext(raw_x=raw_x, raw_y=raw_y, raw_indices=raw_indices)
 
 
 # -- BaselineMethod -----------------------------------------------------------
@@ -115,6 +124,21 @@ class TestStaticBankMethod:
         loss = method.compute_loss(_make_batch(), pl_module, bank=bank)
         assert loss.requires_grad
 
+    def test_raw_indices_deduplicate_storage(self):
+        method = StaticBankMethod(retrieval_budget=4, warmup_steps=9999)
+        bank = StaticReplayBank(NUM_CLASSES, capacity_per_class=10, seed=0)
+        pl_module = MockModule()
+        pl_module.global_step = 0
+        batch = _make_batch()
+        context = _make_context()
+
+        method.compute_loss(batch, pl_module, bank=bank, context=context)
+        first_total = sum(len(pool) for pool in bank._bank.values())
+        method.compute_loss(batch, pl_module, bank=bank, context=context)
+        second_total = sum(len(pool) for pool in bank._bank.values())
+
+        assert first_total == second_total
+
 
 # -- UniformHerdingMethod -----------------------------------------------------
 
@@ -123,3 +147,18 @@ class TestUniformHerdingMethod:
         method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=0)
         loss = method.compute_loss(_make_batch(), MockModule(), bank=None)
         assert loss.ndim == 0
+
+    def test_raw_indices_deduplicate_storage(self):
+        method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=9999)
+        bank = HerdingReplayBank(num_classes=NUM_CLASSES, total_budget=20, seed=0)
+        pl_module = MockModule()
+        pl_module.global_step = 0
+        batch = _make_batch()
+        context = _make_context()
+
+        method.compute_loss(batch, pl_module, bank=bank, context=context)
+        first_total = sum(len(pool) for pool in bank._bank.values())
+        method.compute_loss(batch, pl_module, bank=bank, context=context)
+        second_total = sum(len(pool) for pool in bank._bank.values())
+
+        assert first_total == second_total

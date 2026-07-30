@@ -33,7 +33,7 @@ class UniformHerdingMethod(Method):
 
         if context is not None and context.raw_x is not None and context.raw_y is not None:
             examples = list(zip(context.raw_x, context.raw_y.tolist()))
-            bank.store(examples)
+            bank.store(examples, raw_indices=context.raw_indices)
         else:
             bank.store([(x[i], y[i]) for i in range(len(y))])
 

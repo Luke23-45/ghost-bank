@@ -39,6 +39,16 @@ class TestStaticReplayBank:
         result = bank.query(budget=4)
         assert len(result) == 4
 
+    def test_store_deduplicates_raw_indices(self):
+        bank = StaticReplayBank(num_classes=3, capacity_per_class=10, seed=42)
+        examples = _make_examples([1, 1, 2, 2])
+        raw_indices = torch.tensor([0, 1, 2, 3], dtype=torch.long)
+        bank.store(examples, raw_indices=raw_indices)
+        first_total = sum(len(pool) for pool in bank._bank.values())
+        bank.store(examples, raw_indices=raw_indices)
+        second_total = sum(len(pool) for pool in bank._bank.values())
+        assert first_total == second_total
+
 
 class TestHerdingReplayBank:
     def test_rebuild_selected_and_query(self):
