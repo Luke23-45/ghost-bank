@@ -526,8 +526,8 @@ def _fit_bias_correction(
     optim = torch.optim.Adam([alpha, beta], lr=0.05)
 
     model.eval()
-    with torch.inference_mode():
-        base_logits = model(images_t).detach()
+    with torch.no_grad():
+        base_logits = model(images_t).detach().clone()
 
     for _ in range(steps):
         corrected_old = alpha * base_logits[:, :old_classes] + beta
