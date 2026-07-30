@@ -88,16 +88,18 @@ class ProbeGuidedMethod(Method):
         else:
             self._store_exemplars([(x[i], y[i]) for i in range(len(y))])
 
-        loss = F.cross_entropy(pl_module(x), y)
-
         if pl_module.global_step >= self.warmup_steps:
-            replay_loss = self._compute_replay_loss(
+            replay_x, replay_y = self._sample_replay_batch(
                 pl_module,
                 y.device,
                 transform=context.train_transform if context is not None else None,
                 rng=context.augment_rng if context is not None else None,
             )
-            loss = loss + replay_loss
+            if replay_x is not None and replay_y is not None and replay_y.numel() > 0:
+                x = torch.cat([x, replay_x], dim=0)
+                y = torch.cat([y, replay_y], dim=0)
+
+        loss = F.cross_entropy(pl_module(x), y)
 
         if self.distillation_weight > 0.0 and self._prev_model_snapshot is not None:
             distill_loss = self._compute_distillation_loss(pl_module, x)
@@ -105,32 +107,24 @@ class ProbeGuidedMethod(Method):
 
         return loss
 
-    def _store_exemplars(self, examples: list) -> None:
-        """Store raw exemplars in the per-class bank."""
-        for img, label in examples:
-            cid = int(label) if torch.is_tensor(label) else int(label)
-            if cid not in self._exemplar_bank:
-                self._exemplar_bank[cid] = []
-            self._exemplar_bank[cid].append((img, label))
-
-    def _compute_replay_loss(
+    def _sample_replay_batch(
         self,
         pl_module,
         device: torch.device,
         transform: object | None = None,
         rng: torch.Generator | None = None,
-    ) -> torch.Tensor:
-        """Sample replay items from the exemplar bank and compute CE loss."""
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Sample replay items and convert them into a training batch."""
         if (
             not self._exemplar_bank
             or self.retrieval_budget <= 0
             or self._replay_class_count <= 0
         ):
-            return torch.tensor(0.0, device=device)
+            return None, None
 
         num_classes = self._replay_class_count
         if num_classes <= 0:
-            return torch.tensor(0.0, device=device)
+            return None, None
 
         allocation = self._current_allocation
         if allocation is not None and len(allocation) == num_classes and sum(allocation) > 0:
@@ -174,6 +168,30 @@ class ProbeGuidedMethod(Method):
             dtype=torch.long,
         ) if replay_items else None
 
+        return replay_x, replay_y
+
+    def _store_exemplars(self, examples: list) -> None:
+        """Store raw exemplars in the per-class bank."""
+        for img, label in examples:
+            cid = int(label) if torch.is_tensor(label) else int(label)
+            if cid not in self._exemplar_bank:
+                self._exemplar_bank[cid] = []
+            self._exemplar_bank[cid].append((img, label))
+
+    def _compute_replay_loss(
+        self,
+        pl_module,
+        device: torch.device,
+        transform: object | None = None,
+        rng: torch.Generator | None = None,
+    ) -> torch.Tensor:
+        """Sample replay items from the exemplar bank and compute CE loss."""
+        replay_x, replay_y = self._sample_replay_batch(
+            pl_module,
+            device,
+            transform=transform,
+            rng=rng,
+        )
         if replay_x is not None and replay_y is not None and replay_y.numel() > 0:
             logits = pl_module(replay_x)
             return F.cross_entropy(logits, replay_y)
