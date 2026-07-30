@@ -12,6 +12,7 @@ from statistics import mean
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+from pytorch_lightning.loggers import CSVLogger
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
