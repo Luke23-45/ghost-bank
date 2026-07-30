@@ -44,6 +44,7 @@ This directory contains short, targeted scripts for diagnosing why probe-guided 
     - allocation source: `uniform` vs `probe-guided`
     - selection rule: `random` vs `herding`
   - Default `compare` mode runs `uniform_random`, `probe_random`, `uniform_herding`, and `probe_herding`.
+  - Also includes `probe_blend_random` and `probe_blend_herding`, which constrain probe-guided allocation to stay near the uniform baseline.
   - This is the main script to use when deciding whether probe-guided allocation is actually helping or merely adding noise.
 
 ## Recommended short run
@@ -55,6 +56,7 @@ python analysis/probe_guided_audit.py --tasks 3 --epochs 5 --seed 13
 python analysis/compare_methods.py --tasks 3 --epochs 5 --seed 13
 python analysis/herding_bic_pilot.py --method compare --tasks 3 --epochs 5 --seed 13
 python analysis/replay_ablation.py --method compare --tasks 3 --epochs 5 --seed 13
+python analysis/replay_ablation.py --method probe_blend_herding --tasks 3 --epochs 5 --seed 13
 ```
 
 If those results look plausible, increase to 5 tasks before doing a full run.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import sys
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ from analysis.herding_bic_pilot import (
     _to_chw,
     _transform_raw_batch,
 )
+from src.bank.core.allocator import allocate_uniform_fixed_total
 from src.bank.core.retrieval import sample_uniform
 from src.methods.base import Method, MethodContext
 from src.methods.static_bank.method import _augment_replay
@@ -197,6 +199,8 @@ def _build_variants(method: str) -> list[tuple[str, str, str]]:
         ("probe_random", "probe", "random"),
         ("uniform_herding", "uniform", "herding"),
         ("probe_herding", "probe", "herding"),
+        ("probe_blend_random", "probe_blend", "random"),
+        ("probe_blend_herding", "probe_blend", "herding"),
     ]
     if method == "compare":
         return variants
@@ -256,6 +260,114 @@ def _compute_per_class_forgetting(
     for value in per_task_forgetting:
         per_class.extend([value] * classes_per_task)
     return per_class
+
+
+def _blend_probe_allocation(
+    probe_scores: list[float] | None,
+    num_seen_classes: int,
+    memory_total: int,
+    floor: int = 1,
+    blend: float = 0.35,
+    max_shift_ratio: float = 0.25,
+    gamma: float = 0.5,
+    beta: float = 1.0,
+) -> list[int]:
+    """Conservative probe-guided allocation.
+
+    Starts from uniform fixed-total allocation, mixes in probe guidance,
+    and caps the per-class deviation from the uniform baseline.
+    """
+    if num_seen_classes <= 0:
+        return []
+
+    uniform_alloc = allocate_uniform_fixed_total(
+        num_classes=num_seen_classes,
+        total_budget=memory_total,
+        floor=floor,
+    )
+    if probe_scores is None:
+        return uniform_alloc
+
+    probe_alloc = _build_allocation(
+        "probe",
+        probe_scores,
+        num_seen_classes,
+        memory_total,
+        floor=floor,
+        gamma=gamma,
+        beta=beta,
+    )
+
+    mixed = [
+        (1.0 - blend) * u + blend * p
+        for u, p in zip(uniform_alloc, probe_alloc)
+    ]
+
+    lower_bounds: list[int] = []
+    upper_bounds: list[int] = []
+    for u in uniform_alloc:
+        shift = max(1, int(math.ceil(max_shift_ratio * max(1, u))))
+        lower_bounds.append(max(floor, u - shift))
+        upper_bounds.append(u + shift)
+
+    alloc = [int(math.floor(v)) for v in mixed]
+    alloc = [
+        max(lower_bounds[i], min(alloc[i], upper_bounds[i]))
+        for i in range(num_seen_classes)
+    ]
+
+    target_total = memory_total
+    current_total = sum(alloc)
+    residuals = [mixed[i] - alloc[i] for i in range(num_seen_classes)]
+
+    if current_total < target_total:
+        deficit = target_total - current_total
+        order = sorted(
+            range(num_seen_classes),
+            key=lambda i: (residuals[i], upper_bounds[i] - alloc[i], mixed[i]),
+            reverse=True,
+        )
+        for i in order:
+            if deficit <= 0:
+                break
+            headroom = upper_bounds[i] - alloc[i]
+            if headroom <= 0:
+                continue
+            step = min(headroom, deficit)
+            alloc[i] += step
+            deficit -= step
+    elif current_total > target_total:
+        surplus = current_total - target_total
+        order = sorted(
+            range(num_seen_classes),
+            key=lambda i: (residuals[i], alloc[i] - lower_bounds[i]),
+        )
+        for i in order:
+            if surplus <= 0:
+                break
+            room = alloc[i] - lower_bounds[i]
+            if room <= 0:
+                continue
+            step = min(room, surplus)
+            alloc[i] -= step
+            surplus -= step
+
+    final_total = sum(alloc)
+    if final_total != target_total:
+        # Last-resort correction to preserve exact budget.
+        diff = target_total - final_total
+        order = range(num_seen_classes) if diff > 0 else range(num_seen_classes - 1, -1, -1)
+        for i in order:
+            if diff == 0:
+                break
+            if diff > 0 and alloc[i] < upper_bounds[i]:
+                alloc[i] += 1
+                diff -= 1
+            elif diff < 0 and alloc[i] > lower_bounds[i]:
+                alloc[i] -= 1
+                diff += 1
+
+    return alloc
 
 
 def _compute_probe_correlation(
@@ -334,15 +446,27 @@ def _run_variant(
         else:
             probe_scores = None
 
-        allocation = _build_allocation(
-            allocation_mode,
-            probe_scores,
-            current_num_classes,
-            cfg.memory_total,
-            floor=1,
-            gamma=0.5,
-            beta=1.0,
-        )
+        if allocation_mode == "probe_blend":
+            allocation = _blend_probe_allocation(
+                probe_scores=probe_scores,
+                num_seen_classes=current_num_classes,
+                memory_total=cfg.memory_total,
+                floor=1,
+                blend=0.35,
+                max_shift_ratio=0.25,
+                gamma=0.5,
+                beta=1.0,
+            )
+        else:
+            allocation = _build_allocation(
+                allocation_mode,
+                probe_scores,
+                current_num_classes,
+                cfg.memory_total,
+                floor=1,
+                gamma=0.5,
+                beta=1.0,
+            )
         allocation_history.append(
             {
                 "task": task_id,
@@ -489,6 +613,8 @@ def main() -> None:
             "probe_random",
             "uniform_herding",
             "probe_herding",
+            "probe_blend_random",
+            "probe_blend_herding",
         ],
     )
     parser.add_argument("--tasks", type=int, default=3)
