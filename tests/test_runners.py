@@ -2,12 +2,10 @@
 
 from omegaconf import OmegaConf
 
-from src.bank.strategies import StaticReplayBank, ExposureDebtGhostBank
-from src.methods import (
-    BaselineMethod,
-    EDGBMethod,
-    StaticBankMethod,
-)
+from src.bank.strategies import StaticReplayBank, HerdingReplayBank
+from src.methods.baseline import BaselineMethod
+from src.methods.static_bank import StaticBankMethod
+from src.methods.uniform_herding import UniformHerdingMethod
 from src.models import ResNet
 from studies.runner.common.base_runner import (
     AbstractRunner,
@@ -62,16 +60,17 @@ class TestCreateBank:
         bank = create_bank(cfg, num_classes=10)
         assert isinstance(bank, StaticReplayBank)
 
-    def test_ed_gb_bank(self):
+    def test_herding_bank(self):
         cfg = OmegaConf.create({
+            "data": {"memory_total": 2000},
             "bank": {
-                "name": "ed_gb",
-                "capacity_per_class": 200,
+                "name": "herding",
                 "seed": 42,
+                "floor": 1,
             }
         })
         bank = create_bank(cfg, num_classes=10)
-        assert isinstance(bank, ExposureDebtGhostBank)
+        assert isinstance(bank, HerdingReplayBank)
 
     def test_unknown_bank_returns_none(self):
         cfg = OmegaConf.create({
@@ -112,16 +111,16 @@ class TestCreateMethod:
         assert isinstance(method, StaticBankMethod)
         assert method.warmup_steps == 100
 
-    def test_ed_gb(self):
+    def test_uniform_herding(self):
         cfg = OmegaConf.create({
             "method": {
-                "name": "ed_gb",
+                "name": "uniform_herding",
                 "retrieval_budget": 8,
                 "warmup_steps": 0,
             }
         })
         method = create_method(cfg)
-        assert isinstance(method, EDGBMethod)
+        assert isinstance(method, UniformHerdingMethod)
 
     def test_unknown_method_raises(self):
         import pytest

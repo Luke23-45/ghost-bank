@@ -1,4 +1,4 @@
-"""Run the CIFAR-100 Class-IL benchmark for all four methods."""
+"""Run the CIFAR-100 Class-IL benchmark for the publication-facing methods."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
 RUNNER = str(ROOT / "studies/runner/cifar100/run.py")
 
-METHODS: list[str] = ["baseline", "static_bank", "ed_gb", "pid_gb"]
+METHODS: list[str] = ["baseline", "static_bank", "uniform_herding"]
 
 
 def main() -> None:

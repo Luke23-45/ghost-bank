@@ -1,4 +1,4 @@
 experiment_name: cifar100
 seeds: [13]
-methods: [baseline, static_bank, ed_gb, pid_gb]
+methods: [baseline, static_bank, uniform_herding]
 epochs_per_task: 70

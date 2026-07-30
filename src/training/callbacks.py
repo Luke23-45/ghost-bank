@@ -5,14 +5,11 @@ import sys
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import TQDMProgressBar
 
-from src.bank.strategies.ed_gb import ExposureDebtGhostBank
-from src.bank.strategies.static import StaticReplayBank
-
 
 class DebtCurveLogger(pl.Callback):
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         bank = getattr(pl_module, "bank", None)
-        if isinstance(bank, ExposureDebtGhostBank):
+        if hasattr(bank, "last_debt") and hasattr(bank, "last_allocation"):
             for i, d in enumerate(bank.last_debt):
                 pl_module.log(f"debt/class_{i}", d, on_epoch=True)
             for i, a in enumerate(bank.last_allocation):
@@ -28,10 +25,10 @@ class ExposureTrackerCallback(pl.Callback):
 
 
 class GhostBankProgressBar(TQDMProgressBar):
-    """Custom progress bar that shows ED-GB metrics in the training bar.
+    """Custom progress bar that shows bank metrics in the training bar.
 
     Displays maximum per-class debt and total retrieved samples when
-    an ExposureDebtGhostBank is attached to the module.
+    the attached bank exposes debt/allocation metrics.
     """
 
     def __init__(self, refresh_rate: int = 1, leave: bool = True) -> None:
@@ -40,7 +37,7 @@ class GhostBankProgressBar(TQDMProgressBar):
     def get_metrics(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> dict:
         items = super().get_metrics(trainer, pl_module)
         bank = getattr(pl_module, "bank", None)
-        if isinstance(bank, ExposureDebtGhostBank):
+        if hasattr(bank, "last_debt") and hasattr(bank, "last_allocation"):
             debt = bank.last_debt
             alloc = bank.last_allocation
             if debt:

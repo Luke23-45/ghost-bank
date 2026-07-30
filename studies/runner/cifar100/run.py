@@ -27,6 +27,7 @@ from src.training import (
 from src.utils.logging import setup_logging
 from studies.output import OutputManager
 from studies.runner.cifar100.metrics import average_accuracy, forgetting, backward_transfer
+from src.bank.core.allocator import allocate_uniform_fixed_total
 from studies.runner.common.base_runner import (
     AbstractRunner,
     create_datamodule,
@@ -36,9 +37,10 @@ from studies.runner.common.base_runner import (
     create_pl_module,
 )
 from src.data.cifar100.transforms import make_train_transform_from_rng
+from src.data.cifar100.transforms import make_eval_transform
 from studies.runner.common.path_utils import get_config_dir
 
-BANK_MAP = {"static_bank": "static", "ed_gb": "ed_gb", "pid_gb": "pid_gb"}
+BANK_MAP = {"static_bank": "static", "uniform_herding": "herding"}
 
 
 def _aggregate_metrics(all_metrics: list[dict]) -> dict:
@@ -168,6 +170,8 @@ class CIFAR100Runner(AbstractRunner):
                 model.expand_head(classes_per_task)
                 if bank is not None:
                     bank.expand(classes_per_task)
+            if bank is not None and hasattr(bank, "start_task"):
+                bank.start_task()
 
             train_loader, _ = dm.get_task_loaders(task_id)
             current_num_classes = (task_id + 1) * classes_per_task
@@ -256,6 +260,23 @@ class CIFAR100Runner(AbstractRunner):
                 train_dataloaders=train_loader,
                 val_dataloaders=val_loader,
             )
+
+            if bank is not None and hasattr(bank, "rebuild_selected"):
+                eval_transform = make_eval_transform(
+                    mean=dm.config.mean,
+                    std=dm.config.std,
+                )
+                allocation = allocate_uniform_fixed_total(
+                    num_classes=current_num_classes,
+                    total_budget=cfg.data.memory_total,
+                    floor=cfg.bank.get("floor", 1),
+                )
+                bank.rebuild_selected(
+                    model=model,
+                    allocation=allocation,
+                    eval_transform=eval_transform,
+                    device=next(model.parameters()).device,
+                )
 
             with torch.no_grad():
                 model.eval()

@@ -1,7 +1,7 @@
 from src.bank.strategies.static import StaticReplayBank
-from src.bank.strategies.ed_gb import ExposureDebtGhostBank
+from src.bank.strategies.herding import HerdingReplayBank
 
 __all__ = [
     "StaticReplayBank",
-    "ExposureDebtGhostBank",
+    "HerdingReplayBank",
 ]
