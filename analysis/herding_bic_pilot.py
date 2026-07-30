@@ -167,9 +167,9 @@ def _apply_bias_correction(
 ) -> torch.Tensor:
     if old_classes <= 0:
         return logits
-    corrected = logits.clone()
-    corrected[:, :old_classes] = alpha * corrected[:, :old_classes] + beta
-    return corrected
+    corrected_old = alpha * logits[:, :old_classes] + beta
+    corrected_new = logits[:, old_classes:]
+    return torch.cat([corrected_old, corrected_new], dim=1)
 
 
 class HerdingReplayBank:
@@ -530,8 +530,9 @@ def _fit_bias_correction(
         base_logits = model(images_t).detach()
 
     for _ in range(steps):
-        corrected = base_logits.clone()
-        corrected[:, :old_classes] = alpha * corrected[:, :old_classes] + beta
+        corrected_old = alpha * base_logits[:, :old_classes] + beta
+        corrected_new = base_logits[:, old_classes:]
+        corrected = torch.cat([corrected_old, corrected_new], dim=1)
         loss = F.cross_entropy(corrected, targets)
         optim.zero_grad()
         loss.backward()
