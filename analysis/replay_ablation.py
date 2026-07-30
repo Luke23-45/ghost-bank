@@ -16,6 +16,7 @@ from pytorch_lightning.loggers import CSVLogger
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from src.bank.core.probe import ProbeScorer
 
 from analysis.herding_bic_pilot import (
     _allocation_stats,
