@@ -154,3 +154,56 @@ def test_probe_scorer_state_dict_roundtrip():
     assert scorer2.history == scorer.history
     assert scorer2.smoothed_scores == scorer.smoothed_scores
     assert scorer2.raw_scores == scorer.raw_scores
+
+
+def test_nme_evaluator_prefers_matching_prototype():
+    from studies.runner.cifar100.probe_guided.run import _evaluate_with_nme
+
+    class FakeModel:
+        embedding_dim = 2
+
+        def eval(self):
+            return self
+
+        def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+            return x[:, :2, 0, 0]
+
+    class FakeDM:
+        def get_task_test_loader(self, task_id: int):
+            if task_id == 0:
+                x = torch.tensor(
+                    [
+                        [[[255.0, 0.0, 0.0]]],
+                        [[[255.0, 0.0, 0.0]]],
+                    ]
+                )
+                y = torch.tensor([0, 0], dtype=torch.long)
+            else:
+                x = torch.tensor(
+                    [
+                        [[[0.0, 255.0, 0.0]]],
+                        [[[0.0, 255.0, 0.0]]],
+                    ]
+                )
+                y = torch.tensor([1, 1], dtype=torch.long)
+            return [(torch.arange(len(y)), x, y)]
+
+    model = FakeModel()
+    exemplar_bank = {
+        0: [(torch.tensor([[[255.0, 0.0, 0.0]]]), 0)],
+        1: [(torch.tensor([[[0.0, 255.0, 0.0]]]), 1)],
+    }
+
+    rows = _evaluate_with_nme(
+        model,
+        exemplar_bank,
+        FakeDM(),
+        num_seen_classes=2,
+        current_task_id=1,
+        eval_transform=None,
+        device=torch.device("cpu"),
+    )
+
+    assert len(rows) == 1
+    assert rows[0][0] == pytest.approx(1.0)
+    assert rows[0][1] == pytest.approx(1.0)

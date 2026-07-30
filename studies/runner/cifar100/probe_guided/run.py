@@ -125,6 +125,90 @@ def _compute_spearman_correlation(
     return float(r) if not np.isnan(r) else None
 
 
+def _transform_raw_batch(raw_images: torch.Tensor, eval_transform) -> torch.Tensor:
+    batch_list = []
+    for i in range(raw_images.shape[0]):
+        img_nhwc = raw_images[i]
+        img_nchw = img_nhwc.permute(2, 0, 1).contiguous()
+        if eval_transform is not None:
+            batch_list.append(eval_transform(img_nchw))
+        else:
+            batch_list.append(img_nchw.float() / 255.0)
+    return torch.stack(batch_list, dim=0)
+
+
+def _compute_nme_prototypes(
+    model: PTModel,
+    exemplar_bank: dict[int, list],
+    num_classes: int,
+    eval_transform,
+    device: torch.device,
+) -> torch.Tensor:
+    """Compute class prototypes from the current exemplar bank."""
+    feat_dim = model.embedding_dim
+    prototypes = torch.zeros(num_classes, feat_dim, device=device)
+    for class_id in range(num_classes):
+        pool = exemplar_bank.get(class_id, [])
+        if not pool:
+            continue
+
+        raw_images = []
+        for item in pool:
+            raw = item[0]
+            if not torch.is_tensor(raw):
+                raw = torch.as_tensor(raw)
+            raw_images.append(raw)
+        raw_batch = torch.stack(raw_images, dim=0)
+        images_t = _transform_raw_batch(raw_batch, eval_transform).to(device)
+        with torch.no_grad():
+            feats = model.extract_features(images_t)
+        prototypes[class_id] = feats.mean(dim=0)
+    return prototypes
+
+
+def _evaluate_with_nme(
+    model: PTModel,
+    exemplar_bank: dict[int, list],
+    dm: CIFAR100DataModule,
+    num_seen_classes: int,
+    current_task_id: int,
+    eval_transform,
+    device: torch.device,
+) -> list[list[float]]:
+    """Evaluate seen tasks with a nearest-prototype classifier."""
+    prototypes = _compute_nme_prototypes(
+        model,
+        exemplar_bank,
+        num_seen_classes,
+        eval_transform,
+        device,
+    )
+    proto_norm = F.normalize(prototypes, dim=-1)
+
+    accuracy_matrix: list[list[float]] = []
+    model.eval()
+    with torch.no_grad():
+        row = [0.0] * (current_task_id + 1)
+        for task_id in range(current_task_id + 1):
+            test_loader = dm.get_task_test_loader(task_id)
+            correct = 0
+            total = 0
+            for _, x, y in test_loader:
+                x = x.to(device)
+                y = y.to(device)
+                feats = model.extract_features(x)
+                feat_norm = F.normalize(feats, dim=-1)
+                logits = torch.mm(feat_norm, proto_norm[:num_seen_classes].t())
+                preds = logits.argmax(dim=-1)
+                correct += (preds == y).sum().item()
+                total += y.numel()
+
+            row[task_id] = float(correct / total) if total > 0 else 0.0
+        accuracy_matrix.append(row)
+
+    return accuracy_matrix
+
+
 class ProbeGuidedCIFAR100Runner:
     """End-to-end experiment runner for the PTM/probe-guided method.
 
@@ -290,6 +374,7 @@ class ProbeGuidedCIFAR100Runner:
         )
 
         accuracy_matrix: list[list[float]] = []
+        nme_accuracy_matrix: list[list[float]] = []
 
         for task_id in range(num_tasks):
             print(f"\n{'=' * 60}")
@@ -397,17 +482,34 @@ class ProbeGuidedCIFAR100Runner:
                     row[prev_task] = task_acc
                 accuracy_matrix.append(row)
 
+            nme_rows = _evaluate_with_nme(
+                model,
+                method._exemplar_bank,
+                dm,
+                num_seen_classes=current_num_classes,
+                current_task_id=task_id,
+                eval_transform=eval_transform,
+                device=device,
+            )
+            nme_accuracy_matrix.extend(nme_rows)
+
         # --- Final metrics ---
         final_avg_acc = average_accuracy(accuracy_matrix)
         forget = forgetting(accuracy_matrix) if num_tasks > 1 else 0.0
         bwt = backward_transfer(accuracy_matrix) if num_tasks > 1 else 0.0
+        nme_final_avg_acc = average_accuracy(nme_accuracy_matrix)
+        nme_forget = forgetting(nme_accuracy_matrix) if num_tasks > 1 else 0.0
+        nme_bwt = backward_transfer(nme_accuracy_matrix) if num_tasks > 1 else 0.0
 
         metrics: dict = {
             "method": method_name,
             "seed": seed,
-            "test/avg_acc": final_avg_acc,
-            "test/forgetting": forget,
-            "test/backward_transfer": bwt,
+            "linear/test/avg_acc": final_avg_acc,
+            "linear/test/forgetting": forget,
+            "linear/test/backward_transfer": bwt,
+            "test/avg_acc": nme_final_avg_acc,
+            "test/forgetting": nme_forget,
+            "test/backward_transfer": nme_bwt,
         }
 
         for t in range(num_tasks):
@@ -429,12 +531,17 @@ class ProbeGuidedCIFAR100Runner:
         # --- Write rich output artifacts ---
         for t, row_acc in enumerate(accuracy_matrix):
             metrics[f"task_{t}/accuracy_row"] = json.dumps(row_acc)
+        for t, row_acc in enumerate(nme_accuracy_matrix):
+            metrics[f"nme/task_{t}/accuracy_row"] = json.dumps(row_acc)
         metrics["allocation_history"] = json.dumps(method.allocation_history)
         metrics["probe/score_history"] = json.dumps(probe_history)
 
-        print(f"\n  Final avg accuracy: {final_avg_acc * 100:.2f}%")
-        print(f"  Forgetting: {forget:.2f}")
-        print(f"  Backward transfer: {bwt:.2f}")
+        print(f"\n  Linear avg accuracy: {final_avg_acc * 100:.2f}%")
+        print(f"  Linear forgetting: {forget:.2f}")
+        print(f"  Linear backward transfer: {bwt:.2f}")
+        print(f"  NME avg accuracy: {nme_final_avg_acc * 100:.2f}%")
+        print(f"  NME forgetting: {nme_forget:.2f}")
+        print(f"  NME backward transfer: {nme_bwt:.2f}")
         if "probe/spearman_r" in metrics:
             print(f"  Probe-forgetting Spearman r: {metrics['probe/spearman_r']:.3f}")
 
