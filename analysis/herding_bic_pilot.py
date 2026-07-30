@@ -399,14 +399,15 @@ def _evaluate_linear_matrix(
 ) -> list[float]:
     row = [0.0] * dm.num_tasks
     model.eval()
+    model_device = next(model.parameters()).device
     with torch.inference_mode():
         for prev_task in range(task_id + 1):
             loader = dm.get_task_test_loader(prev_task)
             correct = 0
             total = 0
             for _, x, y in loader:
-                x = _transform_raw_batch(x.to(device), eval_transform)
-                y = y.to(device)
+                x = _transform_raw_batch(x.to(model_device), eval_transform)
+                y = y.to(model_device)
                 logits = model(x)
                 if bias_params is not None:
                     old_classes, alpha, beta = bias_params
@@ -426,8 +427,9 @@ def _compute_nme_prototypes(
     device: torch.device,
 ) -> torch.Tensor:
     feat_dim = model.embedding_dim
-    prototypes = torch.zeros(num_classes, feat_dim, device=device)
-    counts = torch.zeros(num_classes, device=device, dtype=torch.long)
+    model_device = next(model.parameters()).device
+    prototypes = torch.zeros(num_classes, feat_dim, device=model_device)
+    counts = torch.zeros(num_classes, device=model_device, dtype=torch.long)
 
     exemplars: list[tuple[int, torch.Tensor]] = []
     for class_id in range(num_classes):
@@ -442,13 +444,13 @@ def _compute_nme_prototypes(
     for start in range(0, len(exemplars), batch_size):
         end = min(start + batch_size, len(exemplars))
         chunk = exemplars[start:end]
-        labels = torch.tensor([cid for cid, _ in chunk], device=device, dtype=torch.long)
+        labels = torch.tensor([cid for cid, _ in chunk], device=model_device, dtype=torch.long)
         raw_batch = torch.stack([raw for _, raw in chunk], dim=0)
-        images_t = _transform_raw_batch(raw_batch, eval_transform).to(device)
+        images_t = _transform_raw_batch(raw_batch, eval_transform).to(model_device)
         with torch.inference_mode():
             feats = model.extract_features(images_t)
         prototypes.index_add_(0, labels, feats)
-        counts.index_add_(0, labels, torch.ones(labels.shape[0], device=device, dtype=torch.long))
+        counts.index_add_(0, labels, torch.ones(labels.shape[0], device=model_device, dtype=torch.long))
 
     nonzero = counts > 0
     if nonzero.any():
@@ -475,14 +477,15 @@ def _evaluate_nme(
     proto_norm = F.normalize(prototypes, dim=-1)
     row = [0.0] * dm.num_tasks
     model.eval()
+    model_device = next(model.parameters()).device
     with torch.inference_mode():
         for task_id in range(current_task_id + 1):
             loader = dm.get_task_test_loader(task_id)
             correct = 0
             total = 0
             for _, x, y in loader:
-                x = _transform_raw_batch(x.to(device), eval_transform)
-                y = y.to(device)
+                x = _transform_raw_batch(x.to(model_device), eval_transform)
+                y = y.to(model_device)
                 feats = model.extract_features(x)
                 feat_norm = F.normalize(feats, dim=-1)
                 logits = torch.mm(feat_norm, proto_norm[:num_seen_classes].t())
@@ -507,18 +510,19 @@ def _fit_bias_correction(
     if old_classes <= 0:
         return 1.0, 0.0
 
+    model_device = next(model.parameters()).device
     images, targets = _balanced_validation_batch(
         dm,
         num_seen_classes,
         samples_per_class,
         seed=seed,
     )
-    images = images.to(device)
-    targets = targets.to(device)
+    images = images.to(model_device)
+    targets = targets.to(model_device)
     images_t = _transform_raw_batch(images, eval_transform)
 
-    alpha = torch.nn.Parameter(torch.tensor(1.0, device=device))
-    beta = torch.nn.Parameter(torch.tensor(0.0, device=device))
+    alpha = torch.nn.Parameter(torch.tensor(1.0, device=model_device))
+    beta = torch.nn.Parameter(torch.tensor(0.0, device=model_device))
     optim = torch.optim.Adam([alpha, beta], lr=0.05)
 
     model.eval()
