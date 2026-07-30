@@ -154,6 +154,11 @@ def _compute_nme_prototypes(
     feat_dim = model.embedding_dim
     prototypes = torch.zeros(num_classes, feat_dim, device=device)
     for class_id in range(num_classes):
+        if class_id % 10 == 0:
+            print(
+                f"    [nme] building prototypes {class_id + 1}/{num_classes}",
+                flush=True,
+            )
         pool = exemplar_bank.get(class_id, [])
         if not pool:
             continue
@@ -195,6 +200,10 @@ def _evaluate_with_nme(
     model.eval()
     with torch.no_grad():
         for task_id in range(current_task_id + 1):
+            print(
+                f"    [nme] evaluating task {task_id + 1}/{current_task_id + 1}",
+                flush=True,
+            )
             test_loader = dm.get_task_test_loader(task_id)
             correct = 0
             total = 0
