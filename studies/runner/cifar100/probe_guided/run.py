@@ -126,21 +126,24 @@ def _compute_spearman_correlation(
 
 
 def _transform_raw_batch(raw_images: torch.Tensor, eval_transform) -> torch.Tensor:
-    batch_list = []
-    for i in range(raw_images.shape[0]):
-        raw = raw_images[i]
-        if raw.dim() == 3 and raw.shape[-1] == 3 and raw.shape[0] != 3:
-            img_nchw = raw.permute(2, 0, 1).contiguous()
-        else:
-            img_nchw = raw.contiguous()
-        if eval_transform is not None:
-            batch_list.append(eval_transform(img_nchw))
-        else:
-            img = img_nchw.float() / 255.0
-            if img.dim() == 3 and img.shape[-1] == 3 and img.shape[0] != 3:
-                img = img.permute(2, 0, 1).contiguous()
-            batch_list.append(img)
-    return torch.stack(batch_list, dim=0)
+    if raw_images.dim() != 4:
+        raise ValueError(f"Expected a 4D image batch, got shape {tuple(raw_images.shape)}")
+
+    if raw_images.shape[-1] == 3 and raw_images.shape[1] != 3:
+        batch = raw_images.permute(0, 3, 1, 2).contiguous()
+    else:
+        batch = raw_images.contiguous()
+
+    if eval_transform is not None:
+        return eval_transform(batch)
+    return batch.float().div(255.0)
+
+
+def _to_chw_tensor(raw: torch.Tensor) -> torch.Tensor:
+    """Normalize a single raw image tensor to CHW layout."""
+    if raw.dim() == 3 and raw.shape[-1] == 3 and raw.shape[0] != 3:
+        return raw.permute(2, 0, 1).contiguous()
+    return raw.contiguous()
 
 
 def _compute_nme_prototypes(
@@ -153,27 +156,42 @@ def _compute_nme_prototypes(
     """Compute class prototypes from the current exemplar bank."""
     feat_dim = model.embedding_dim
     prototypes = torch.zeros(num_classes, feat_dim, device=device)
-    for class_id in range(num_classes):
-        if class_id % 10 == 0:
-            print(
-                f"    [nme] building prototypes {class_id + 1}/{num_classes}",
-                flush=True,
-            )
-        pool = exemplar_bank.get(class_id, [])
-        if not pool:
-            continue
+    counts = torch.zeros(num_classes, device=device, dtype=torch.long)
 
-        raw_images = []
+    exemplars: list[tuple[int, torch.Tensor]] = []
+    for class_id in range(num_classes):
+        pool = exemplar_bank.get(class_id, [])
         for item in pool:
             raw = item[0]
             if not torch.is_tensor(raw):
                 raw = torch.as_tensor(raw)
-            raw_images.append(raw)
-        raw_batch = torch.stack(raw_images, dim=0)
+            exemplars.append((class_id, _to_chw_tensor(raw)))
+
+    if not exemplars:
+        return prototypes
+
+    batch_size = 256
+    total = len(exemplars)
+    for start in range(0, total, batch_size):
+        end = min(start + batch_size, total)
+        if start % (batch_size * 2) == 0 or end == total:
+            print(
+                f"    [nme] prototypes {end}/{total}",
+                flush=True,
+            )
+
+        chunk = exemplars[start:end]
+        labels = torch.tensor([cid for cid, _ in chunk], device=device, dtype=torch.long)
+        raw_batch = torch.stack([raw for _, raw in chunk], dim=0)
         images_t = _transform_raw_batch(raw_batch, eval_transform).to(device)
-        with torch.no_grad():
+        with torch.inference_mode():
             feats = model.extract_features(images_t)
-        prototypes[class_id] = feats.mean(dim=0)
+        prototypes.index_add_(0, labels, feats)
+        counts.index_add_(0, labels, torch.ones(labels.shape[0], device=device, dtype=torch.long))
+
+    nonzero = counts > 0
+    if nonzero.any():
+        prototypes[nonzero] = prototypes[nonzero] / counts[nonzero].unsqueeze(1).to(prototypes.dtype)
     return prototypes
 
 
@@ -198,7 +216,7 @@ def _evaluate_with_nme(
 
     row = [0.0] * (current_task_id + 1)
     model.eval()
-    with torch.no_grad():
+    with torch.inference_mode():
         for task_id in range(current_task_id + 1):
             print(
                 f"    [nme] evaluating task {task_id + 1}/{current_task_id + 1}",
@@ -208,7 +226,7 @@ def _evaluate_with_nme(
             correct = 0
             total = 0
             for _, x, y in test_loader:
-                x = x.to(device)
+                x = _transform_raw_batch(x.to(device), eval_transform)
                 y = y.to(device)
                 feats = model.extract_features(x)
                 feat_norm = F.normalize(feats, dim=-1)
@@ -328,6 +346,19 @@ class ProbeGuidedCIFAR100Runner:
     ) -> dict:
         method_name = cfg.method.get("name", "probe_guided")
         pl.seed_everything(seed, workers=True)
+
+        accelerator = cfg.training.get("accelerator", "gpu")
+        devices = cfg.training.get("devices", 1)
+        precision = cfg.training.get("precision", "16-mixed")
+        if accelerator == "gpu":
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "training.accelerator is set to 'gpu' but torch.cuda.is_available() is false."
+                )
+            torch.backends.cudnn.benchmark = True
+            torch.set_float32_matmul_precision("high")
+            device_name = torch.cuda.get_device_name(0)
+            print(f"[device] Using CUDA device: {device_name}", flush=True)
 
         num_tasks = cfg.data.get("num_tasks", 10)
         classes_per_task = cfg.data.get("classes_per_task", 10)
@@ -450,9 +481,9 @@ class ProbeGuidedCIFAR100Runner:
             )
 
             trainer = pl.Trainer(
-                accelerator=cfg.training.get("accelerator", "auto"),
-                devices=cfg.training.get("devices", 1),
-                precision=cfg.training.get("precision", 32),
+                accelerator=accelerator,
+                devices=devices,
+                precision=precision,
                 max_epochs=cfg.runner.get("epochs_per_task", 70),
                 log_every_n_steps=cfg.training.log_every_n_steps,
                 enable_progress_bar=not _quiet,
@@ -600,17 +631,7 @@ class ProbeGuidedCIFAR100Runner:
                 images = images[idx].to(device)
                 targets = targets[idx].to(device)
 
-                if eval_transform is not None:
-                    batch_list = []
-                    for i in range(images.shape[0]):
-                        img_nhwc = images[i]
-                        img_nchw = img_nhwc.permute(2, 0, 1).contiguous()
-                        batch_list.append(eval_transform(img_nchw))
-                    images_t = torch.stack(batch_list, dim=0)
-                else:
-                    images_t = images.float() / 255.0
-                    if images_t.dim() == 4 and images_t.shape[-1] == 3 and images_t.shape[1] != 3:
-                        images_t = images_t.permute(0, 3, 1, 2).contiguous()
+                images_t = _transform_raw_batch(images, eval_transform)
 
                 logits = model(images_t)
                 loss = F.cross_entropy(logits, targets)

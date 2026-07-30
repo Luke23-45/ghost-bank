@@ -7,6 +7,21 @@ import torch
 import torch.nn.functional as F
 
 
+def _transform_raw_batch(raw_images: torch.Tensor, transform: object | None) -> torch.Tensor:
+    """Convert a raw NHWC/NCHW batch into normalized CHW tensors."""
+    if raw_images.dim() != 4:
+        raise ValueError(f"Expected a 4D image batch, got shape {tuple(raw_images.shape)}")
+
+    if raw_images.shape[-1] == 3 and raw_images.shape[1] != 3:
+        batch = raw_images.permute(0, 3, 1, 2).contiguous()
+    else:
+        batch = raw_images.contiguous()
+
+    if transform is not None:
+        return transform(batch)
+    return batch.float().div(255.0)
+
+
 class ProbeScorer:
     """Computes and tracks held-out probe loss per class.
 
@@ -58,18 +73,7 @@ class ProbeScorer:
         """
         targets = probe_targets.to(device)
         images = probe_images.to(device)
-
-        if transform is not None:
-            batch_list = []
-            for i in range(images.shape[0]):
-                img_nhwc = images[i]
-                img_nchw = img_nhwc.permute(2, 0, 1).contiguous()
-                batch_list.append(transform(img_nchw))
-            images_t = torch.stack(batch_list, dim=0)
-        else:
-            images_t = images.float() / 255.0
-            if images_t.dim() == 4 and images_t.shape[-1] == 3 and images_t.shape[1] != 3:
-                images_t = images_t.permute(0, 3, 1, 2).contiguous()
+        images_t = _transform_raw_batch(images, transform)
 
         with torch.no_grad():
             logits = model(images_t)
