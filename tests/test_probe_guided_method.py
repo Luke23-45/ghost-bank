@@ -67,6 +67,33 @@ def test_method_store_exemplars():
     assert len(method._exemplar_bank[1]) == 1
 
 
+def test_method_store_exemplars_dedups_per_task_indices():
+    method = ProbeGuidedMethod()
+    raw = [(torch.tensor([1, 2, 3]), 0), (torch.tensor([4, 5, 6]), 1)]
+    indices = torch.tensor([7, 8], dtype=torch.long)
+
+    method._store_exemplars(raw, raw_indices=indices)
+    method._store_exemplars(raw, raw_indices=indices)
+
+    assert len(method._exemplar_bank[0]) == 1
+    assert len(method._exemplar_bank[1]) == 1
+
+
+def test_method_set_replay_class_count_clears_seen_indices():
+    method = ProbeGuidedMethod()
+    raw = [(torch.tensor([1, 2, 3]), 0)]
+    indices = torch.tensor([3], dtype=torch.long)
+
+    method.set_replay_class_count(10)
+    method._store_exemplars(raw, raw_indices=indices)
+    method._store_exemplars(raw, raw_indices=indices)
+    assert len(method._exemplar_bank[0]) == 1
+
+    method.set_replay_class_count(20)
+    method._store_exemplars(raw, raw_indices=indices)
+    assert len(method._exemplar_bank[0]) == 2
+
+
 def test_method_state_dict_roundtrip():
     method = ProbeGuidedMethod(memory_total=100)
     method._exemplar_bank = {0: [(1, 0)], 1: [(2, 1)]}

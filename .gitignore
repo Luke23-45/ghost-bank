@@ -90,3 +90,5 @@ output/
 
 docs/dev/t
 data/cifar100/raw/cifar-100-python.tar.gz
+outputs
+logs.md

@@ -528,6 +528,8 @@ class ProbeGuidedCIFAR100Runner:
                 accuracy_matrix.append(row)
 
         # --- Final metrics ---
+        if hasattr(method, "prune_memory"):
+            method.prune_memory()
         final_avg_acc = average_accuracy(accuracy_matrix)
         forget = forgetting(accuracy_matrix) if num_tasks > 1 else 0.0
         bwt = backward_transfer(accuracy_matrix) if num_tasks > 1 else 0.0

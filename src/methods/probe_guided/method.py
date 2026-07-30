@@ -70,6 +70,7 @@ class ProbeGuidedMethod(Method):
         self._current_allocation: list[int] | None = None
         self._exemplar_bank: dict[int, list] = {}
         self._replay_class_count: int = 0
+        self._seen_task_indices: set[int] = set()
         self._rng = random.Random(seed)
         self.allocation_history: list[list[int]] = []
 
@@ -83,8 +84,10 @@ class ProbeGuidedMethod(Method):
         x, y = batch
 
         if context is not None and context.raw_x is not None and context.raw_y is not None:
-            examples = list(zip(context.raw_x, context.raw_y.tolist()))
-            self._store_exemplars(examples)
+            self._store_exemplars(
+                list(zip(context.raw_x, context.raw_y.tolist())),
+                raw_indices=context.raw_indices,
+            )
         else:
             self._store_exemplars([(x[i], y[i]) for i in range(len(y))])
 
@@ -170,9 +173,24 @@ class ProbeGuidedMethod(Method):
 
         return replay_x, replay_y
 
-    def _store_exemplars(self, examples: list) -> None:
-        """Store raw exemplars in the per-class bank."""
-        for img, label in examples:
+    def _store_exemplars(
+        self,
+        examples: list,
+        raw_indices: torch.Tensor | None = None,
+    ) -> None:
+        """Store raw exemplars in the per-class bank.
+
+        When ``raw_indices`` is provided, each training sample is stored
+        at most once per task. This prevents the same example from being
+        re-added on every epoch.
+        """
+        indices = raw_indices.tolist() if raw_indices is not None else None
+        for pos, (img, label) in enumerate(examples):
+            if indices is not None:
+                sample_idx = int(indices[pos])
+                if sample_idx in self._seen_task_indices:
+                    continue
+                self._seen_task_indices.add(sample_idx)
             cid = int(label) if torch.is_tensor(label) else int(label)
             if cid not in self._exemplar_bank:
                 self._exemplar_bank[cid] = []
@@ -285,6 +303,7 @@ class ProbeGuidedMethod(Method):
     def set_replay_class_count(self, num_classes: int) -> None:
         """Set the number of old classes eligible for replay."""
         self._replay_class_count = max(0, int(num_classes))
+        self._seen_task_indices.clear()
 
     def state_dict(self) -> dict:
         return {

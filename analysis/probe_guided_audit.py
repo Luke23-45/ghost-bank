@@ -389,6 +389,8 @@ def _run_short_audit(method_name: str, cfg: AuditConfig) -> dict:
     linear_avg = average_accuracy(accuracy_matrix)
     linear_forgetting = forgetting(accuracy_matrix) if cfg.tasks > 1 else 0.0
     linear_bwt = backward_transfer(accuracy_matrix) if cfg.tasks > 1 else 0.0
+    if hasattr(method, "prune_memory"):
+        method.prune_memory()
     nme_row, nme_stats = _nme_evaluate(
         model=model,
         exemplar_bank=getattr(method, "_exemplar_bank", bank._bank if bank is not None else {}),
