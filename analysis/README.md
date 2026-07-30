@@ -34,6 +34,11 @@ This directory contains short, targeted scripts for diagnosing why probe-guided 
   - Runs probe-guided, uniform replay, and frozen baseline under the same short settings.
   - Useful for checking whether failure is method-specific or a broader training issue.
 
+- `herding_bic_pilot.py`
+  - Ground-up rescue pilot that pairs fixed-memory replay with herding exemplar selection and a BiC-style bias-correction fit.
+  - Compares `probe_guided_herding_bic`, `uniform_herding_bic`, and `frozen_baseline`.
+  - Best used as the next decision-point experiment before any core-method rewrite.
+
 ## Recommended short run
 
 Use a small number of tasks and epochs first:
@@ -41,7 +46,7 @@ Use a small number of tasks and epochs first:
 ```bash
 python analysis/probe_guided_audit.py --tasks 3 --epochs 5 --seed 13
 python analysis/compare_methods.py --tasks 3 --epochs 5 --seed 13
+python analysis/herding_bic_pilot.py --method compare --tasks 3 --epochs 5 --seed 13
 ```
 
 If those results look plausible, increase to 5 tasks before doing a full run.
-
