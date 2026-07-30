@@ -386,7 +386,6 @@ class ProbeGuidedCIFAR100Runner:
         )
 
         accuracy_matrix: list[list[float]] = []
-        nme_accuracy_matrix: list[list[float]] = []
 
         for task_id in range(num_tasks):
             print(f"\n{'=' * 60}")
@@ -497,25 +496,21 @@ class ProbeGuidedCIFAR100Runner:
                     row[prev_task] = task_acc
                 accuracy_matrix.append(row)
 
-            print(f"  [{method_name}] Task {task_id + 1}: NME eval", flush=True)
-            nme_row = _evaluate_with_nme(
-                model,
-                method._exemplar_bank,
-                dm,
-                num_seen_classes=current_num_classes,
-                current_task_id=task_id,
-                eval_transform=eval_transform,
-                device=device,
-            )
-            nme_accuracy_matrix.append(nme_row)
-
         # --- Final metrics ---
         final_avg_acc = average_accuracy(accuracy_matrix)
         forget = forgetting(accuracy_matrix) if num_tasks > 1 else 0.0
         bwt = backward_transfer(accuracy_matrix) if num_tasks > 1 else 0.0
-        nme_final_avg_acc = average_accuracy(nme_accuracy_matrix)
-        nme_forget = forgetting(nme_accuracy_matrix) if num_tasks > 1 else 0.0
-        nme_bwt = backward_transfer(nme_accuracy_matrix) if num_tasks > 1 else 0.0
+        print(f"  [{method_name}] Final: NME eval", flush=True)
+        nme_row = _evaluate_with_nme(
+            model,
+            method._exemplar_bank,
+            dm,
+            num_seen_classes=total_classes,
+            current_task_id=num_tasks - 1,
+            eval_transform=eval_transform,
+            device=device,
+        )
+        nme_final_avg_acc = float(sum(nme_row) / len(nme_row)) if nme_row else 0.0
 
         metrics: dict = {
             "method": method_name,
@@ -524,8 +519,6 @@ class ProbeGuidedCIFAR100Runner:
             "linear/test/forgetting": forget,
             "linear/test/backward_transfer": bwt,
             "test/avg_acc": nme_final_avg_acc,
-            "test/forgetting": nme_forget,
-            "test/backward_transfer": nme_bwt,
         }
 
         for t in range(num_tasks):
@@ -547,8 +540,7 @@ class ProbeGuidedCIFAR100Runner:
         # --- Write rich output artifacts ---
         for t, row_acc in enumerate(accuracy_matrix):
             metrics[f"task_{t}/accuracy_row"] = json.dumps(row_acc)
-        for t, row_acc in enumerate(nme_accuracy_matrix):
-            metrics[f"nme/task_{t}/accuracy_row"] = json.dumps(row_acc)
+        metrics["nme/task_final_accuracy_row"] = json.dumps(nme_row)
         metrics["allocation_history"] = json.dumps(method.allocation_history)
         metrics["probe/score_history"] = json.dumps(probe_history)
 
@@ -556,8 +548,6 @@ class ProbeGuidedCIFAR100Runner:
         print(f"  Linear forgetting: {forget:.2f}")
         print(f"  Linear backward transfer: {bwt:.2f}")
         print(f"  NME avg accuracy: {nme_final_avg_acc * 100:.2f}%")
-        print(f"  NME forgetting: {nme_forget:.2f}")
-        print(f"  NME backward transfer: {nme_bwt:.2f}")
         if "probe/spearman_r" in metrics:
             print(f"  Probe-forgetting Spearman r: {metrics['probe/spearman_r']:.3f}")
 
