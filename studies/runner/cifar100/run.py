@@ -86,7 +86,8 @@ class CIFAR100Runner(AbstractRunner):
             method_overrides = [f"method={method_name}"]
             if method_name in BANK_MAP:
                 method_overrides.append(f"+bank={BANK_MAP[method_name]}")
-                method_overrides.append("bank.exclude_classes=[]")
+                method_overrides.append("++bank.exclude_classes=[]")
+
             with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
                 cfg = compose(
                     "config",
