@@ -321,6 +321,19 @@ def _run_variant(
         train_loader, val_loader = dm.get_task_loaders(task_id)
         current_num_classes = (task_id + 1) * cfg.classes_per_task
 
+        if task_id > 0:
+            probe_scores = _compute_probe_scores(
+                model=model,
+                dm=dm,
+                probe_scorer=probe_scorer,
+                num_seen_classes=current_num_classes,
+                eval_transform=eval_transform,
+                device=device,
+            )
+            probe_history.append(probe_scores)
+        else:
+            probe_scores = None
+
         allocation = _build_allocation(
             allocation_mode,
             probe_scores,
@@ -401,17 +414,6 @@ def _run_variant(
         )
         accuracy_matrix.append(raw_row)
         nme_matrix.append(nme_row)
-
-        probe_scores = _compute_probe_scores(
-            model=model,
-            dm=dm,
-            probe_scorer=probe_scorer,
-            num_seen_classes=current_num_classes,
-            eval_transform=eval_transform,
-            device=device,
-        )
-        probe_history.append(probe_scores)
-        model.train()
 
         print(f"  allocation: {allocation_history[-1]['allocation_stats']}", flush=True)
         print(f"  selected: {selected_stats}", flush=True)
