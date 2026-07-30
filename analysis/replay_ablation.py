@@ -415,6 +415,18 @@ def _run_variant(
         accuracy_matrix.append(raw_row)
         nme_matrix.append(nme_row)
 
+        probe_scores = _compute_probe_scores(
+            model=model,
+            dm=dm,
+            probe_scorer=probe_scorer,
+            num_seen_classes=current_num_classes,
+            eval_transform=eval_transform,
+            device=device,
+        )
+        probe_history.append(probe_scores)
+        pl_module.train()
+        model.train()
+
         print(f"  allocation: {allocation_history[-1]['allocation_stats']}", flush=True)
         print(f"  selected: {selected_stats}", flush=True)
 
