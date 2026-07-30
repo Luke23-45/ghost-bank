@@ -359,6 +359,9 @@ class ProbeGuidedCIFAR100Runner:
             torch.set_float32_matmul_precision("high")
             device_name = torch.cuda.get_device_name(0)
             print(f"[device] Using CUDA device: {device_name}", flush=True)
+            device = torch.device("cuda")
+        else:
+            device = torch.device("cpu")
 
         num_tasks = cfg.data.get("num_tasks", 10)
         classes_per_task = cfg.data.get("classes_per_task", 10)
@@ -500,8 +503,9 @@ class ProbeGuidedCIFAR100Runner:
                 val_dataloaders=val_loader,
             )
 
+            model.to(device)
+
             # --- Phase 4: post-hoc calibration ---
-            device = next(model.parameters()).device
             print(f"  [{method_name}] Task {task_id + 1}: calibration", flush=True)
             self._run_calibration(
                 model, method, dm, current_num_classes, device, eval_transform,

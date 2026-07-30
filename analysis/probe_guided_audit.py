@@ -350,7 +350,7 @@ def _run_short_audit(method_name: str, cfg: AuditConfig) -> dict:
         )
         trainer.fit(pl_module, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
-        device = next(model.parameters()).device
+        model.to(device)
         if method_name == "probe_guided" and hasattr(method, "snapshot_model"):
             method.snapshot_model(pl_module)
 

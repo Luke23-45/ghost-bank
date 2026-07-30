@@ -683,6 +683,8 @@ def _run_variant(
         )
         trainer.fit(pl_module, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
+        model.to(device)
+
         select_stats = bank.rebuild_selected(
             model=model,
             allocation=allocation,
