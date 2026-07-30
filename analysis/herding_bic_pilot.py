@@ -746,6 +746,8 @@ def _run_variant(
         bic_matrix.append(bic_row)
         nme_matrix.append(nme_row)
 
+        model.train()
+
         print(f"  allocation: {allocation_history[-1]['allocation_stats']}", flush=True)
         print(f"  selected: {select_stats}", flush=True)
         print(f"  bias: alpha={bias_params[0]:.4f} beta={bias_params[1]:.4f}", flush=True)
