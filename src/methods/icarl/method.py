@@ -69,8 +69,10 @@ class iCaRLMethod(Method):
         if self.old_model is not None:
             num_old_classes = self.old_model.fc.out_features
             with torch.no_grad():
-                old_logits = self.old_model(x)
-                old_targets = torch.sigmoid(old_logits)
+                # Cast x to match old_model's parameter dtype to avoid AMP/mixed-precision crashes
+                old_dtype = next(self.old_model.parameters()).dtype
+                old_logits = self.old_model(x.to(dtype=old_dtype))
+                old_targets = torch.sigmoid(old_logits).to(dtype=x.dtype)
             
             # Replace the targets for old classes with the old model's probabilities
             targets[:, :num_old_classes] = old_targets
