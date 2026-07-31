@@ -176,6 +176,15 @@ class CIFAR100Runner(AbstractRunner):
             if bank is not None and hasattr(bank, "start_task"):
                 bank.start_task()
 
+            if bank is not None and hasattr(bank, "set_quotas"):
+                quota_alloc = allocate_uniform_fixed_total(
+                    num_classes=(task_id + 1) * classes_per_task,
+                    total_budget=cfg.data.memory_total,
+                    floor=cfg.bank.get("floor", 1),
+                )
+                print(f"[RUNNER] task={task_id} set_quotas allocation={quota_alloc}", flush=True)
+                bank.set_quotas(quota_alloc)
+
             train_loader, _ = dm.get_task_loaders(task_id)
             current_num_classes = (task_id + 1) * classes_per_task
 

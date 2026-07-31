@@ -4,6 +4,7 @@ import random
 
 import torch
 
+from src.bank.core.allocator import allocate_uniform_fixed_total
 from src.bank.strategies.static import StaticReplayBank
 from src.bank.strategies.herding import HerdingReplayBank
 
@@ -48,6 +49,55 @@ class TestStaticReplayBank:
         bank.store(examples, raw_indices=raw_indices)
         second_total = sum(len(pool) for pool in bank._bank.values())
         assert first_total == second_total
+
+    def test_set_quotas_prunes_pools_to_allocation(self):
+        bank = StaticReplayBank(num_classes=4, capacity_per_class=100, seed=42)
+        bank.store(_make_examples([0] * 100 + [1] * 100 + [2] * 100 + [3] * 100))
+        bank.set_quotas([1, 1, 1, 1])
+        sizes = {c: len(pool) for c, pool in bank._bank.items()}
+        assert sizes == {0: 1, 1: 1, 2: 1, 3: 1}
+
+    def test_store_respects_quota(self):
+        bank = StaticReplayBank(num_classes=2, capacity_per_class=100, seed=42)
+        bank.set_quotas([2, 2])
+        bank.store(_make_examples([0] * 50 + [1] * 50))
+        sizes = {c: len(pool) for c, pool in bank._bank.items()}
+        assert sizes == {0: 2, 1: 2}
+
+    def test_ten_task_trajectory_keeps_total_budget(self):
+        bank = StaticReplayBank(num_classes=10, capacity_per_class=200, seed=42)
+        k = 2000
+        idx = 0
+        for task in range(10):
+            if task > 0:
+                bank.expand(10)
+            bank.set_quotas(
+                allocate_uniform_fixed_total(
+                    num_classes=(task + 1) * 10,
+                    total_budget=k,
+                    floor=1,
+                )
+            )
+            for c in range(10 * task, 10 * (task + 1)):
+                examples = [(torch.tensor([float(i)]), c) for i in range(450)]
+                bank.store(
+                    examples,
+                    raw_indices=torch.arange(idx, idx + 450, dtype=torch.long),
+                )
+                idx += 450
+            total = sum(len(pool) for pool in bank._bank.values())
+            assert total == k
+        sizes = {c: len(pool) for c, pool in bank._bank.items()}
+        assert all(size == 20 for size in sizes.values())
+
+    def test_state_dict_roundtrip_preserves_quotas(self):
+        bank = StaticReplayBank(num_classes=2, capacity_per_class=100, seed=42)
+        bank.set_quotas([5, 5])
+        bank.store(_make_examples([0] * 30 + [1] * 30))
+        restored = StaticReplayBank(num_classes=2, capacity_per_class=100, seed=42)
+        restored.load_state_dict(bank.state_dict())
+        assert restored._quotas == {0: 5, 1: 5}
+        assert sum(len(pool) for pool in restored._bank.values()) == 10
 
 
 class TestHerdingReplayBank:

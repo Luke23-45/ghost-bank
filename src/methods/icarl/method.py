@@ -99,7 +99,8 @@ class iCaRLMethod(Method):
             # Replace the targets for old classes with the old model's probabilities
             targets[:, :num_old_classes] = old_targets
             
-        loss = F.binary_cross_entropy_with_logits(logits, targets)
+        loss = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+        loss = loss.sum(dim=1).mean(dim=0)
         return loss
 
     def predict(self, x: torch.Tensor, pl_module, bank: AbstractGhostBank | None = None) -> torch.Tensor:
