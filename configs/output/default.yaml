@@ -1,5 +1,5 @@
 # Default output configuration
 base_dir: output
-formats:
-  - csv
-  - jsonl
+
+# Persist the final model state_dict of every seed under artifacts/.
+save_checkpoint: false

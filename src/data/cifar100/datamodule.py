@@ -41,6 +41,7 @@ class CIFAR100DataModule(BaseDataModule):
         self._probe_images: torch.Tensor | None = None
         self._probe_targets: torch.Tensor | None = None
         self._probe_per_class: dict[int, tuple[torch.Tensor, torch.Tensor]] | None = None
+        self._class_order: list[int] | None = None
 
     @property
     def total_classes(self) -> int:
@@ -75,6 +76,9 @@ class CIFAR100DataModule(BaseDataModule):
                 
             all_train_targets = _map_targets(all_train_targets)
             self._test_targets = _map_targets(self._test_targets)
+        else:
+            class_order = list(range(self.total_classes))
+        self._class_order = class_order
 
         if self.config.probe_enabled:
             total_classes = self.total_classes
@@ -116,6 +120,23 @@ class CIFAR100DataModule(BaseDataModule):
     @property
     def classes_per_task(self) -> int:
         return self.config.classes_per_task
+
+    @property
+    def class_order(self) -> list[int]:
+        """Original (pre-permutation) class ids in the new-id order.
+
+        ``class_order[new_id]`` is the original class id.  Identity order
+        when ``config.seed`` is None.  Only available after ``setup()``.
+        """
+        if self._class_order is None:
+            raise RuntimeError("Class order is only available after setup().")
+        return list(self._class_order)
+
+    def task_class_ids(self, task_id: int) -> list[int]:
+        """Original class ids assigned to ``task_id`` (before permutation)."""
+        start = task_id * self.config.classes_per_task
+        end = start + self.config.classes_per_task
+        return self.class_order[start:end]
 
     def _class_range(self, task_id: int) -> list[int]:
         start = task_id * self.config.classes_per_task

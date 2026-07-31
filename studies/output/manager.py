@@ -76,6 +76,22 @@ class OutputManager:
             else:
                 f.write(str(config))
 
+    def write_file(self, subpath: str, content: str) -> None:
+        """Write free-form text under the run root (e.g. matrices, meta)."""
+        self._require_state(
+            OutputState.CONFIG_SAVED,
+            OutputState.METRICS_OPEN,
+            OutputState.RESULTS_WRITTEN,
+            OutputState.ARTIFACTS_SAVED,
+        )
+        root = os.path.normpath(self.root)
+        path = os.path.normpath(os.path.join(root, subpath))
+        if not path.startswith(root + os.sep):
+            raise ValueError(f"Refusing to write outside run root: {subpath!r}")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
     def write_metrics(self, data: dict, filename: str = "train_metrics.csv") -> None:
         self._require_state(OutputState.CONFIG_SAVED, OutputState.METRICS_OPEN)
         path = os.path.join(self.root, "metrics", filename)

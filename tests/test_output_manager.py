@@ -265,6 +265,33 @@ class TestOutputManager:
         with pytest.raises(RuntimeError):
             mgr.save_artifact("x.txt", "data")
 
+    def test_write_file_nested(self, tmp_path):
+        mgr = OutputManager(experiment="test_exp", base_dir=str(tmp_path))
+        mgr.initialize()
+        mgr.save_config({"a": 1})
+        mgr.write_file("metrics/extra.txt", "hello")
+        with open(os.path.join(mgr.root, "metrics", "extra.txt")) as f:
+            assert f.read() == "hello"
+
+    def test_write_file_creates_subdirs(self, tmp_path):
+        mgr = OutputManager(experiment="test_exp", base_dir=str(tmp_path))
+        mgr.initialize()
+        mgr.save_config({"a": 1})
+        mgr.write_file("deep/nested/dir.txt", "x")
+        assert os.path.isfile(os.path.join(mgr.root, "deep", "nested", "dir.txt"))
+
+    def test_write_file_escape_guard(self, tmp_path):
+        mgr = OutputManager(experiment="test_exp", base_dir=str(tmp_path))
+        mgr.initialize()
+        mgr.save_config({"a": 1})
+        with pytest.raises(ValueError, match="outside run root"):
+            mgr.write_file("../escape.txt", "x")
+
+    def test_write_file_before_initialize_raises(self, tmp_path):
+        mgr = OutputManager(experiment="test_exp", base_dir=str(tmp_path))
+        with pytest.raises(RuntimeError):
+            mgr.write_file("x.txt", "x")
+
     def test_lifecycle_happy_path(self, tmp_path):
         mgr = OutputManager(experiment="test_exp", base_dir=str(tmp_path))
         assert mgr.root is None

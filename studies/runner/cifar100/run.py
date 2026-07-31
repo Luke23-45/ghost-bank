@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
@@ -26,7 +30,13 @@ from src.training import (
 )
 from src.utils.logging import setup_logging
 from studies.output import OutputManager
-from studies.runner.cifar100.metrics import average_accuracy, forgetting, backward_transfer
+from studies.runner.cifar100.metrics import (
+    aggregate_matrices,
+    average_accuracy,
+    backward_transfer,
+    forgetting,
+    matrix_to_csv,
+)
 from src.bank.core.allocator import allocate_uniform_fixed_total
 from studies.runner.common.base_runner import (
     AbstractRunner,
@@ -69,6 +79,86 @@ def _aggregate_metrics(all_metrics: list[dict]) -> dict:
     return aggregated
 
 
+_RUN_README = """# Experiment run output
+
+This directory holds the full persistence trail of one experiment run
+(config x seed sweep) so every number in a paper table can be traced to
+raw files.
+
+## Layout
+
+- `configs/resolved_config.yaml`  - exact resolved Hydra config (seed, budget, method, ...).
+- `run_meta.json`                 - git commit / dirty flag, python & library versions, device, wall clock.
+- `README.md`                     - this file.
+- `metrics/seed_{s}_metrics.json` - per-seed scalar metrics (avg acc, forgetting, BWT,
+                                    per-task final acc, epochs used, wall time).
+- `metrics/seed_{s}_accuracy_matrix.csv` - accuracy matrix (see below).
+- `metrics/seed_{s}_task_classes.json`   - original class ids assigned to each task
+                                          (the per-seed class permutation).
+- `metrics/seed_{s}_bank_sizes.json`     - exemplar memory size per class at the end of
+                                          each task (absent for methods without a bank).
+- `metrics/aggregated_metrics.csv`       - mean / std across seeds for every scalar metric.
+- `metrics/aggregated_accuracy_matrix.csv` / `_std.csv` - element-wise mean / population
+                                          std of the accuracy matrix across seeds.
+- `results/final_results.json`    - aggregated + per-seed results.
+- `seed_{s}_task_{t}/`            - PyTorch Lightning CSVLogger output for every (seed, task):
+  - `metrics.csv`    - per-epoch train/val/test metrics.
+  - `hparams.yaml`   - hyperparameters passed to the Lightning module.
+  - `task_meta.yaml` - task id, class ids, bank name/budget, epochs actually used.
+- `artifacts/`       - optional persisted final models (`save_checkpoint: true`).
+
+## Accuracy matrix format
+
+`seed_{s}_accuracy_matrix.csv` has one row per task; row i is measured
+at the end of task i.  Cell [i][j] is the accuracy on task j's test set.
+Cells for tasks not yet seen (j > i) are `nan` and are excluded from all
+statistics.  The final row holds the final-state per-task accuracies, so
+`test/avg_acc` is the mean of that row.
+
+## Metric definitions (matching studies/runner/cifar100/metrics.py)
+
+- `avg_acc`            - mean over tasks of the final-row accuracy (per seed)
+                         / mean across seeds (aggregated).
+- `forgetting`         - Chaudhry et al.: mean over tasks 0..T-2 of
+                         (peak accuracy - final accuracy) per task.
+- `backward_transfer`  - mean over tasks 0..T-2 of (final - first-evaluated
+                         accuracy) per task.
+"""
+
+
+def _build_run_meta(cfg: DictConfig, seeds: list[int], started_at: datetime) -> dict:
+    """Environment and provenance metadata for a run directory."""
+    import subprocess
+
+    def _git(*args: str) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", *args], capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except BaseException:
+            return None
+        return None
+
+    return {
+        "experiment": cfg.runner.experiment_name,
+        "method": cfg.method.name,
+        "seeds": [int(s) for s in seeds],
+        "num_seeds": len(seeds),
+        "num_tasks": int(cfg.data.get("num_tasks", 10)),
+        "started_at": started_at.isoformat(timespec="seconds"),
+        "finished_at": datetime.now().isoformat(timespec="seconds"),
+        "wall_time_s": (datetime.now() - started_at).total_seconds(),
+        "git_commit": _git("rev-parse", "HEAD"),
+        "git_dirty": bool(_git("status", "--porcelain")),
+        "python": sys.version.split()[0],
+        "torch": torch.__version__,
+        "pytorch_lightning": pl.__version__,
+        "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+    }
+
+
 class CIFAR100Runner(AbstractRunner):
     def compose_configs(self) -> list[tuple[DictConfig, str | None]]:
         with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
@@ -104,6 +194,7 @@ class CIFAR100Runner(AbstractRunner):
         log_cfg = cfg.training.get("logging", {})
         setup_logging(level=log_cfg.get("level", "info"))
         seeds: list[int] = cfg.runner.get("seeds", [13])
+        started_at = datetime.now()
 
         all_metrics: list[dict] = []
         for seed in seeds:
@@ -113,8 +204,45 @@ class CIFAR100Runner(AbstractRunner):
         aggregated = _aggregate_metrics(all_metrics)
 
         try:
+            matrices: list[list[list[float]]] = []
             for m in all_metrics:
+                matrix = m.pop("accuracy_matrix", None)
+                class_ids = m.pop("task_class_ids", None)
+                bank_sizes = m.pop("bank_sizes", None)
+                if matrix is not None:
+                    matrices.append(matrix)
+                    output_manager.write_file(
+                        f"metrics/seed_{m['seed']}_accuracy_matrix.csv",
+                        matrix_to_csv(matrix),
+                    )
+                if class_ids is not None:
+                    output_manager.write_file(
+                        f"metrics/seed_{m['seed']}_task_classes.json",
+                        json.dumps(class_ids, indent=2),
+                    )
+                if bank_sizes:
+                    output_manager.write_file(
+                        f"metrics/seed_{m['seed']}_bank_sizes.json",
+                        json.dumps(bank_sizes, indent=2),
+                    )
                 output_manager.write_metrics(m, f"seed_{m['seed']}_metrics.json")
+
+            if matrices:
+                mean_matrix, std_matrix = aggregate_matrices(matrices)
+                output_manager.write_file(
+                    "metrics/aggregated_accuracy_matrix.csv",
+                    matrix_to_csv(mean_matrix),
+                )
+                output_manager.write_file(
+                    "metrics/aggregated_accuracy_matrix_std.csv",
+                    matrix_to_csv(std_matrix),
+                )
+
+            output_manager.write_file(
+                "run_meta.json",
+                json.dumps(_build_run_meta(cfg, seeds, started_at), indent=2),
+            )
+            output_manager.write_file("README.md", _RUN_README)
 
             output_manager.write_metrics(aggregated, "aggregated_metrics.csv")
             output_manager.finalize(
@@ -135,6 +263,7 @@ class CIFAR100Runner(AbstractRunner):
     def _run_single_seed(self, cfg: DictConfig, output_root: str, seed: int) -> dict:
         cfg.data.seed = seed
         pl.seed_everything(seed, workers=True)
+        _seed_t0 = time.time()
         debug = bool(cfg.get("debug", False))
 
         dm = create_datamodule(cfg)
@@ -143,6 +272,7 @@ class CIFAR100Runner(AbstractRunner):
         classes_per_task = dm.classes_per_task
         num_tasks = dm.num_tasks
         total_classes = num_tasks * classes_per_task
+        task_class_ids = {t: dm.task_class_ids(t) for t in range(num_tasks)}
 
         model = create_model(cfg, num_classes=classes_per_task)
         bank = create_bank(cfg, num_classes=classes_per_task, run_seed=seed)
@@ -166,6 +296,8 @@ class CIFAR100Runner(AbstractRunner):
             )
 
         accuracy_matrix: list[list[float]] = []
+        epochs_used: list[int] = []
+        bank_sizes: list[dict] = []
 
         for task_id in range(num_tasks):
             if task_id > 0:
@@ -284,6 +416,27 @@ class CIFAR100Runner(AbstractRunner):
             )
             if debug:
                 print(f"[RUNNER] task={task_id} trainer.fit done in {_time.time()-_t0:.1f}s", flush=True)
+            epochs_used.append(trainer.current_epoch + 1)
+
+            task_meta = {
+                "method": cfg.method.name,
+                "seed": seed,
+                "task_id": task_id,
+                "class_ids": dm.task_class_ids(task_id),
+                "epochs_used": epochs_used[-1],
+                "max_epochs": cfg.runner.get("epochs_per_task", 70),
+                "memory_total": cfg.data.get("memory_total", 2000),
+                "retrieval_budget": cfg.method.get("retrieval_budget", 64),
+                "warmup_steps": cfg.method.get("warmup_steps", 0),
+                "bank": cfg.bank.name if "bank" in cfg else None,
+                "num_classes": current_num_classes,
+            }
+            task_meta_path = os.path.join(
+                output_root, f"seed_{seed}_task_{task_id}", "task_meta.yaml"
+            )
+            os.makedirs(os.path.dirname(task_meta_path), exist_ok=True)
+            with open(task_meta_path, "w", encoding="utf-8") as f:
+                f.write(OmegaConf.to_yaml(task_meta))
             if bank is not None and hasattr(bank, "rebuild_selected"):
                 # PyTorch Lightning moves the model to CPU after trainer.fit() finishes.
                 # We must manually move it back to the accelerator device for fast feature extraction.
@@ -317,7 +470,7 @@ class CIFAR100Runner(AbstractRunner):
             _t2 = _time.time()
             with torch.no_grad():
                 model.eval()
-                row = [0.0] * num_tasks
+                row = [float("nan")] * num_tasks
                 for prev_task in range(task_id + 1):
                     _t3 = _time.time()
                     task_test_loader = dm.get_task_test_loader(prev_task)
@@ -334,6 +487,17 @@ class CIFAR100Runner(AbstractRunner):
             if debug:
                 print(f"[RUNNER] task={task_id} testing loop done in {_time.time()-_t2:.1f}s", flush=True)
 
+            if bank is not None:
+                bank_state = bank.state_dict()
+                pool_map = bank_state.get("selected", bank_state["bank"])
+                bank_sizes.append({int(c): len(pool) for c, pool in pool_map.items()})
+
+        if cfg.output.get("save_checkpoint", False):
+            ckpt_path = os.path.join(
+                output_root, "artifacts", f"final_model_seed_{seed}.pt"
+            )
+            torch.save(model.state_dict(), ckpt_path)
+
         final_avg_acc = average_accuracy(accuracy_matrix)
         forget = forgetting(accuracy_matrix) if num_tasks > 1 else 0.0
         bwt = backward_transfer(accuracy_matrix) if num_tasks > 1 else 0.0
@@ -344,6 +508,10 @@ class CIFAR100Runner(AbstractRunner):
             "test/avg_acc": final_avg_acc,
             "test/forgetting": forget,
             "test/backward_transfer": bwt,
+            "wall_time_s": time.time() - _seed_t0,
+            "accuracy_matrix": accuracy_matrix,
+            "task_class_ids": task_class_ids,
+            "bank_sizes": bank_sizes,
         }
 
         for t in range(num_tasks):
@@ -351,6 +519,8 @@ class CIFAR100Runner(AbstractRunner):
                 col = [accuracy_matrix[row][t] for row in range(t, num_tasks)]
                 final = col[-1] if col else 0.0
                 metrics[f"test/task_{t}_final_acc"] = final
+            if t < len(epochs_used):
+                metrics[f"train/epochs_task_{t}"] = epochs_used[t]
 
         return metrics
 
