@@ -51,6 +51,7 @@ class CIFAR100DataModule(BaseDataModule):
             root=self.config.root,
             val_split=self.config.val_split,
             seed=self.config.seed,
+            verbose=self.config.debug,
         )
         ingestor.ingest()
 

@@ -135,6 +135,7 @@ class CIFAR100Runner(AbstractRunner):
     def _run_single_seed(self, cfg: DictConfig, output_root: str, seed: int) -> dict:
         cfg.data.seed = seed
         pl.seed_everything(seed, workers=True)
+        debug = bool(cfg.get("debug", False))
 
         dm = create_datamodule(cfg)
         dm.setup("fit")
@@ -182,7 +183,8 @@ class CIFAR100Runner(AbstractRunner):
                     total_budget=cfg.data.memory_total,
                     floor=cfg.bank.get("floor", 1),
                 )
-                print(f"[RUNNER] task={task_id} set_quotas allocation={quota_alloc}", flush=True)
+                if debug:
+                    print(f"[RUNNER] task={task_id} set_quotas allocation={quota_alloc}", flush=True)
                 bank.set_quotas(quota_alloc)
 
             train_loader, _ = dm.get_task_loaders(task_id)
@@ -271,7 +273,8 @@ class CIFAR100Runner(AbstractRunner):
             if val_loader is None:
                 print("[WARNING] Val splits not found! Early stopping will monitor test set.", flush=True)
                 val_loader = dm.get_task_test_loader(task_id)
-            print(f"[RUNNER] task={task_id} trainer.fit starting...", flush=True)
+            if debug:
+                print(f"[RUNNER] task={task_id} trainer.fit starting...", flush=True)
             import time as _time
             _t0 = _time.time()
             trainer.fit(
@@ -279,8 +282,8 @@ class CIFAR100Runner(AbstractRunner):
                 train_dataloaders=train_loader,
                 val_dataloaders=val_loader,
             )
-            print(f"[RUNNER] task={task_id} trainer.fit done in {_time.time()-_t0:.1f}s", flush=True)
-
+            if debug:
+                print(f"[RUNNER] task={task_id} trainer.fit done in {_time.time()-_t0:.1f}s", flush=True)
             if bank is not None and hasattr(bank, "rebuild_selected"):
                 # PyTorch Lightning moves the model to CPU after trainer.fit() finishes.
                 # We must manually move it back to the accelerator device for fast feature extraction.
@@ -296,17 +299,21 @@ class CIFAR100Runner(AbstractRunner):
                     total_budget=cfg.data.memory_total,
                     floor=cfg.bank.get("floor", 1),
                 )
-                print(f"[RUNNER] task={task_id} rebuild_selected starting... allocation={allocation}", flush=True)
+                if debug:
+                    print(f"[RUNNER] task={task_id} rebuild_selected starting... allocation={allocation}", flush=True)
                 _t1 = _time.time()
                 bank.rebuild_selected(
                     model=model,
                     allocation=allocation,
                     eval_transform=eval_transform,
                     device=accelerator_device,
+                    verbose=debug,
                 )
-                print(f"[RUNNER] task={task_id} rebuild_selected done in {_time.time()-_t1:.1f}s", flush=True)
+                if debug:
+                    print(f"[RUNNER] task={task_id} rebuild_selected done in {_time.time()-_t1:.1f}s", flush=True)
 
-            print(f"[RUNNER] task={task_id} testing loop starting...", flush=True)
+            if debug:
+                print(f"[RUNNER] task={task_id} testing loop starting...", flush=True)
             _t2 = _time.time()
             with torch.no_grad():
                 model.eval()
@@ -321,9 +328,11 @@ class CIFAR100Runner(AbstractRunner):
                     if test_results and "test/acc" in test_results[0]:
                         task_acc = test_results[0]["test/acc"]
                     row[prev_task] = task_acc
-                    print(f"[RUNNER] task={task_id} test prev_task={prev_task} acc={task_acc:.4f} in {_time.time()-_t3:.1f}s", flush=True)
+                    if debug:
+                        print(f"[RUNNER] task={task_id} test prev_task={prev_task} acc={task_acc:.4f} in {_time.time()-_t3:.1f}s", flush=True)
                 accuracy_matrix.append(row)
-            print(f"[RUNNER] task={task_id} testing loop done in {_time.time()-_t2:.1f}s", flush=True)
+            if debug:
+                print(f"[RUNNER] task={task_id} testing loop done in {_time.time()-_t2:.1f}s", flush=True)
 
         final_avg_acc = average_accuracy(accuracy_matrix)
         forget = forgetting(accuracy_matrix) if num_tasks > 1 else 0.0

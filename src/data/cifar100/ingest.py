@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import pickle
 import tarfile
 import urllib.error
@@ -50,12 +51,16 @@ class CIFAR100Ingestor:
         root: str = "./data/cifar100",
         val_split: float = 0.0,
         seed: int = 13,
+        verbose: bool = True,
     ) -> None:
         self.root = Path(root).resolve()
         self.raw_dir = self.root / "raw"
         self.processed_dir = self.root / "processed"
         self.val_split = val_split
+        self.verbose = verbose
         self._generator = torch.Generator().manual_seed(seed)
+        if not verbose:
+            os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
     # ------------------------------------------------------------------
     # Public API
@@ -168,13 +173,19 @@ class CIFAR100Ingestor:
 
         train_imgs = torch.from_numpy(
             np.stack(
-                [self._hf_img_to_numpy(img) for img in tqdm(df_train["img"], desc="Train images")],
+                [
+                    self._hf_img_to_numpy(img)
+                    for img in tqdm(df_train["img"], desc="Train images", disable=not self.verbose)
+                ],
                 axis=0,
             )
         )
         test_imgs = torch.from_numpy(
             np.stack(
-                [self._hf_img_to_numpy(img) for img in tqdm(df_test["img"], desc="Test images")],
+                [
+                    self._hf_img_to_numpy(img)
+                    for img in tqdm(df_test["img"], desc="Test images", disable=not self.verbose)
+                ],
                 axis=0,
             )
         )
@@ -235,7 +246,7 @@ class CIFAR100Ingestor:
             return
 
         print(f"[CIFAR100Ingestor] Downloading from {CIFAR100_URL}")
-        self._download_stream(CIFAR100_URL, dest)
+        self._download_stream(CIFAR100_URL, dest, verbose=self.verbose)
 
         actual = dest.stat().st_size
         if actual < EXPECTED_TAR_BYTES * 0.9:
@@ -259,7 +270,12 @@ class CIFAR100Ingestor:
             extract_kwargs["filter"] = "data"
         with tarfile.open(tar_path, "r:gz") as tar:
             members = tar.getmembers()
-            for member in tqdm(members, desc="Extracting", unit="file"):
+            for member in tqdm(
+                members,
+                desc="Extracting",
+                unit="file",
+                disable=not self.verbose,
+            ):
                 tar.extract(member, **extract_kwargs)
 
     def _process_from_pickles(self) -> None:
@@ -323,7 +339,7 @@ class CIFAR100Ingestor:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _download_stream(url: str, dest: Path) -> None:
+    def _download_stream(url: str, dest: Path, verbose: bool = True) -> None:
         req = urllib.request.Request(
             url,
             headers={"User-Agent": "Mozilla/5.0 (compatible; Ghost-Bank/0.1.0)"},
@@ -340,6 +356,7 @@ class CIFAR100Ingestor:
                         unit_scale=True,
                         desc="Downloading",
                         miniters=1,
+                        disable=not verbose,
                     ) as pbar:
                         while True:
                             chunk = response.read(block)

@@ -107,6 +107,7 @@ def create_datamodule(cfg: DictConfig) -> CIFAR100DataModule:
             split_seed=dc.get("split_seed", 13),
             memory_total=dc.get("memory_total", 2000),
             probe_enabled=dc.get("probe_enabled", False),
+            debug=cfg.get("debug", False),
         )
         return CIFAR100DataModule(config)
     raise ValueError(f"Unsupported data type: {dc.type}")

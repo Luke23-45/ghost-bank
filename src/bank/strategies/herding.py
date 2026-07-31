@@ -119,6 +119,7 @@ class HerdingReplayBank(AbstractGhostBank):
         eval_transform=None,
         device: torch.device | None = None,
         chunk_size: int = 256,
+        verbose: bool = False,
     ) -> dict[str, float]:
         if allocation is None:
             allocation = allocate_uniform_fixed_total(
@@ -133,9 +134,10 @@ class HerdingReplayBank(AbstractGhostBank):
         model.eval()
         model_device = next(model.parameters()).device
         t_rebuild_start = time.time()
-        print(f"[rebuild_selected] Starting. allocation len={len(allocation)}, bank keys={sorted(self._bank.keys())}", flush=True)
-        for cid, pool in self._bank.items():
-            print(f"  bank[{cid}] pool_size={len(pool)}", flush=True)
+        if verbose:
+            print(f"[rebuild_selected] Starting. allocation len={len(allocation)}, bank keys={sorted(self._bank.keys())}", flush=True)
+            for cid, pool in self._bank.items():
+                print(f"  bank[{cid}] pool_size={len(pool)}", flush=True)
 
         with torch.inference_mode():
             for class_id, quota in enumerate(allocation):
@@ -155,17 +157,20 @@ class HerdingReplayBank(AbstractGhostBank):
                     feats = model.extract_features(images_t).detach().cpu()
                     t_feat = time.time()
                     feats_chunks.append(feats)
-                    print(f"  class {class_id}: chunk [{start}:{end}] stack={t_stack-t_chunk:.3f}s transform={t_transform-t_stack:.3f}s extract={t_feat-t_transform:.3f}s", flush=True)
+                    if verbose:
+                        print(f"  class {class_id}: chunk [{start}:{end}] stack={t_stack-t_chunk:.3f}s transform={t_transform-t_stack:.3f}s extract={t_feat-t_transform:.3f}s", flush=True)
 
                 feats_all = torch.cat(feats_chunks, dim=0)
 
                 if quota >= len(pool):
                     pick = list(range(len(pool)))
-                    print(f"  class {class_id}: quota={quota} >= pool={len(pool)}, copied. ({time.time()-t_class:.2f}s)", flush=True)
+                    if verbose:
+                        print(f"  class {class_id}: quota={quota} >= pool={len(pool)}, copied. ({time.time()-t_class:.2f}s)", flush=True)
                 else:
                     t_herd = time.time()
                     pick = _herding_select(feats_all, quota)
-                    print(f"  class {class_id}: pool={len(pool)} quota={quota} herding={time.time()-t_herd:.3f}s total={time.time()-t_class:.2f}s", flush=True)
+                    if verbose:
+                        print(f"  class {class_id}: pool={len(pool)} quota={quota} herding={time.time()-t_herd:.3f}s total={time.time()-t_class:.2f}s", flush=True)
                 
                 # NME should use the mean of the *selected* exemplars
                 class_mean = feats_all[pick].mean(dim=0)
@@ -173,7 +178,8 @@ class HerdingReplayBank(AbstractGhostBank):
                 
                 selected[class_id] = [pool[i] for i in pick]
                 total_selected += len(selected[class_id])
-        print(f"[rebuild_selected] Done in {time.time()-t_rebuild_start:.2f}s. total_selected={total_selected}", flush=True)
+        if verbose:
+            print(f"[rebuild_selected] Done in {time.time()-t_rebuild_start:.2f}s. total_selected={total_selected}", flush=True)
 
         self._selected = selected
         return {

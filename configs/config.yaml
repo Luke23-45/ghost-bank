@@ -6,6 +6,11 @@ defaults:
   - output: default
   - _self_
 
+# Global verbosity toggle. When true, the runner and replay banks print
+# per-class / per-chunk timing diagnostics; when false (default), the
+# final run log only shows progress bars and one-line status messages.
+debug: false
+
 hydra:
   run:
     dir: .

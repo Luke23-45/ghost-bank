@@ -26,6 +26,7 @@ class CIFAR100Config:
     split_seed: int = 13
     memory_total: int = 2000
     probe_enabled: bool = True
+    debug: bool = False
 
     @property
     def raw_dir(self) -> str:
