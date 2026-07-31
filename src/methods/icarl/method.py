@@ -65,9 +65,14 @@ class iCaRLMethod(Method):
         # One-hot targets for BCE
         targets = F.one_hot(y, num_classes=num_classes).float()
         
-        # Apply KD for old classes if we have an old model
+        # Apply KD for old classes using the frozen snapshot
         if self.old_model is not None:
             num_old_classes = self.old_model.fc.out_features
+            
+            # Ensure the teacher model is on the correct device (GPU) 
+            # since copy.deepcopy might have captured it on the CPU.
+            self.old_model.to(x.device)
+            
             with torch.no_grad():
                 # Disable autocast for the teacher to prevent float16/float32 mismatch bugs
                 # and ensure we get the exact FP32 probabilities it originally produced.
