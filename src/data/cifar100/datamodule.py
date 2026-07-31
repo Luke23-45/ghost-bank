@@ -233,7 +233,7 @@ class CIFAR100DataModule(BaseDataModule):
 
     @property
     def train_dataset(self) -> CIFAR100TaskView:
-        class_range = self._class_range(0)
+        class_range = list(range(self.total_classes))
         return CIFAR100TaskView(
             self._train_images, self._train_targets, class_range,
             transform=self._shared_train_transform(),

@@ -42,6 +42,7 @@ class CIFAR100TaskView(BaseDataset):
         super().__init__()
         indices = sorted(int(c) for c in class_indices)
         mask = torch.isin(targets, torch.tensor(indices))
+        self._original_indices = torch.nonzero(mask).squeeze(1).contiguous()
         self._raw_images = images[mask].contiguous()
         self._raw_targets = targets[mask].contiguous()
         self._class_indices = indices
@@ -64,7 +65,7 @@ class CIFAR100TaskView(BaseDataset):
         label = self._raw_targets[index]
         if self._transform is not None:
             img_nchw = self._transform(img_nchw)
-        return index, img_nchw, label
+        return int(self._original_indices[index]), img_nchw, label
 
     def __len__(self) -> int:
         return self._raw_targets.shape[0]
