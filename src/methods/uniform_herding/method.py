@@ -35,7 +35,9 @@ class UniformHerdingMethod(Method):
             examples = list(zip(context.raw_x, context.raw_y.tolist()))
             bank.store(examples, raw_indices=context.raw_indices)
         else:
-            bank.store([(x[i], y[i]) for i in range(len(y))])
+            x_cpu = x.detach().cpu()
+            y_labels = y.detach().cpu().tolist()
+            bank.store([(x_i.clone(), y_i) for x_i, y_i in zip(x_cpu, y_labels)])
 
         if pl_module.global_step >= self.warmup_steps:
             replay_items = bank.query(budget=self.retrieval_budget)

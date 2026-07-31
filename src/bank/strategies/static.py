@@ -29,6 +29,7 @@ class StaticReplayBank(AbstractGhostBank):
         self._capacity = capacity_per_class
         self._rng = random.Random(seed)
         self._seen_indices: set[int] = set()
+        self._seen_counts: dict[int, int] = {}
 
     @staticmethod
     def _to_tensor_label(y: object) -> torch.Tensor:
@@ -49,8 +50,15 @@ class StaticReplayBank(AbstractGhostBank):
                 self._seen_indices.add(sample_idx)
             y = self._to_tensor_label(y)
             cid = _to_int(y)
-            if cid in self._bank and len(self._bank[cid]) < self._capacity:
-                self._bank[cid].append((x, y))
+            if cid in self._bank:
+                current_seen = self._seen_counts.get(cid, 0)
+                if current_seen < self._capacity:
+                    self._bank[cid].append((x, y))
+                else:
+                    r = self._rng.randint(0, current_seen)
+                    if r < self._capacity:
+                        self._bank[cid][r] = (x, y)
+                self._seen_counts[cid] = current_seen + 1
 
     def query(self, budget: int, **kwargs) -> list:
         return sample_uniform(self._bank, budget, self._rng)
@@ -66,9 +74,15 @@ class StaticReplayBank(AbstractGhostBank):
             "bank": {c: list(pool) for c, pool in self._bank.items()},
             "capacity": self._capacity,
             "seen_indices": list(self._seen_indices),
+            "seen_counts": self._seen_counts.copy(),
         }
 
     def load_state_dict(self, state: dict) -> None:
         self._bank = {int(c): list(pool) for c, pool in state["bank"].items()}
         self._capacity = state["capacity"]
         self._seen_indices = set(int(i) for i in state.get("seen_indices", []))
+        
+        if "seen_counts" in state:
+            self._seen_counts = {int(k): int(v) for k, v in state["seen_counts"].items()}
+        else:
+            self._seen_counts = {int(c): len(pool) for c, pool in self._bank.items()}
