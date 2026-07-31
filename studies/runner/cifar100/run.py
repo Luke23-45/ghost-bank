@@ -193,6 +193,7 @@ class CIFAR100Runner(AbstractRunner):
                 pid_controller=pid_controller,
                 train_transform=train_transform,
                 augment_generator=augment_rng,
+                raw_dataset=dm.train_dataset,
             )
 
             # Determine quiet / verbose mode from training.logging.level --

@@ -34,12 +34,14 @@ class GhostBankLightningModule(pl.LightningModule):
         pid_controller: PIDController | None = None,
         train_transform: object | None = None,
         augment_generator: torch.Generator | None = None,
+        raw_dataset: object | None = None,
     ) -> None:
         super().__init__()
         self.save_hyperparameters(ignore=(
             "model", "method", "bank",
             "exposure_tracker", "pid_controller",
             "train_transform", "augment_generator",
+            "raw_dataset",
         ))
         self.model = model
         self.method = method
@@ -54,6 +56,7 @@ class GhostBankLightningModule(pl.LightningModule):
 
         self._train_transform = train_transform
         self._augment_generator = augment_generator
+        self.raw_dataset = raw_dataset
 
         self.exposure_tracker = exposure_tracker
         if self.exposure_tracker is None and getattr(method, "needs_exposure_tracker", False):
@@ -95,11 +98,7 @@ class GhostBankLightningModule(pl.LightningModule):
         batch_idx: int,
     ) -> torch.Tensor:
         idx, x, y = _unpack_batch(batch)
-        # Look up the *raw* uint8 NHWC views of the same samples so the
-        # bank can store pre-augmentation images.  ``idx`` is a
-        # batch-local view index; the dataset is held on the active
-        # trainer dataloader via ``self.trainer.train_dataloader``.
-        raw_x, raw_y = _resolve_raw_from_train_loader(self.trainer, idx, y)
+        raw_x, raw_y = _resolve_raw_from_train_loader(self, idx, y)
         context = MethodContext(
             raw_x=raw_x,
             raw_y=raw_y,
@@ -108,7 +107,10 @@ class GhostBankLightningModule(pl.LightningModule):
             augment_rng=self._augment_generator,
         )
         loss = self.method.compute_loss(
-            (x, y), self, bank=self.bank, context=context,
+            (x, y),
+            self,
+            bank=self.bank,
+            context=context,
         )
         self.log("train/loss", loss, on_step=True, on_epoch=True)
         return loss
@@ -121,8 +123,7 @@ class GhostBankLightningModule(pl.LightningModule):
         _, x, y = _unpack_batch(batch)
         logits = self.model(x)
         loss = F.cross_entropy(logits, y)
-        preds = logits.argmax(dim=-1)
-        acc = (preds == y).float().mean()
+        acc = (logits.argmax(dim=-1) == y).float().mean()
         self.log("val/loss", loss, on_epoch=True, on_step=False)
         self.log("val/acc", acc, on_epoch=True, on_step=False)
 
@@ -228,23 +229,13 @@ def _unpack_batch(batch: tuple | list) -> tuple[torch.Tensor, torch.Tensor, torc
 
 
 def _resolve_raw_from_train_loader(
-    trainer: pl.Trainer | None,
+    pl_module: GhostBankLightningModule,
     idx: torch.Tensor,
     y: torch.Tensor,
 ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
-    """Fetch the raw uint8 NHWC view of the items in the batch.
-
-    The active task dataset is accessible via ``trainer.train_dataloader.dataset``
-    when running.  Returns ``(None, None)`` outside the trainer context
-    or when the dataset doesn't expose ``raw_images`` / ``raw_targets``.
-    """
-    if trainer is None:
-        return None, None
-    loader = trainer.train_dataloader
-    if loader is None:
-        return None, None
-    dataset = loader.dataset
-    if not hasattr(dataset, "raw_images") or not hasattr(dataset, "raw_targets"):
+    """Fetch the raw uint8 NHWC view of the items in the batch."""
+    dataset = pl_module.raw_dataset
+    if dataset is None or not hasattr(dataset, "raw_images") or not hasattr(dataset, "raw_targets"):
         return None, None
     try:
         idx_long = idx.long()

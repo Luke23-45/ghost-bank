@@ -180,6 +180,7 @@ def create_pl_module(
     pid_controller: PIDController | None = None,
     train_transform: object | None = None,
     augment_generator: torch.Generator | None = None,
+    raw_dataset: object | None = None,
 ) -> GhostBankLightningModule:
     """Create a PL LightningModule from components."""
     return GhostBankLightningModule(
@@ -197,4 +198,5 @@ def create_pl_module(
         pid_controller=pid_controller,
         train_transform=train_transform,
         augment_generator=augment_generator,
+        raw_dataset=raw_dataset,
     )
