@@ -256,11 +256,15 @@ class CIFAR100Runner(AbstractRunner):
             )
 
             val_loader = dm.get_task_test_loader(task_id)
+            print(f"[RUNNER] task={task_id} trainer.fit starting...", flush=True)
+            import time as _time
+            _t0 = _time.time()
             trainer.fit(
                 pl_module,
                 train_dataloaders=train_loader,
                 val_dataloaders=val_loader,
             )
+            print(f"[RUNNER] task={task_id} trainer.fit done in {_time.time()-_t0:.1f}s", flush=True)
 
             if bank is not None and hasattr(bank, "rebuild_selected"):
                 eval_transform = make_eval_transform(
@@ -272,17 +276,23 @@ class CIFAR100Runner(AbstractRunner):
                     total_budget=cfg.data.memory_total,
                     floor=cfg.bank.get("floor", 1),
                 )
+                print(f"[RUNNER] task={task_id} rebuild_selected starting... allocation={allocation}", flush=True)
+                _t1 = _time.time()
                 bank.rebuild_selected(
                     model=model,
                     allocation=allocation,
                     eval_transform=eval_transform,
                     device=next(model.parameters()).device,
                 )
+                print(f"[RUNNER] task={task_id} rebuild_selected done in {_time.time()-_t1:.1f}s", flush=True)
 
+            print(f"[RUNNER] task={task_id} testing loop starting...", flush=True)
+            _t2 = _time.time()
             with torch.no_grad():
                 model.eval()
                 row = [0.0] * num_tasks
                 for prev_task in range(task_id + 1):
+                    _t3 = _time.time()
                     task_test_loader = dm.get_task_test_loader(prev_task)
                     test_results = trainer.test(
                         pl_module, dataloaders=task_test_loader, verbose=False,
@@ -291,7 +301,9 @@ class CIFAR100Runner(AbstractRunner):
                     if test_results and "test/acc" in test_results[0]:
                         task_acc = test_results[0]["test/acc"]
                     row[prev_task] = task_acc
+                    print(f"[RUNNER] task={task_id} test prev_task={prev_task} acc={task_acc:.4f} in {_time.time()-_t3:.1f}s", flush=True)
                 accuracy_matrix.append(row)
+            print(f"[RUNNER] task={task_id} testing loop done in {_time.time()-_t2:.1f}s", flush=True)
 
         final_avg_acc = average_accuracy(accuracy_matrix)
         forget = forgetting(accuracy_matrix) if num_tasks > 1 else 0.0

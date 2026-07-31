@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import time
 from collections.abc import Collection
 
 import torch
@@ -130,6 +131,10 @@ class HerdingReplayBank(AbstractGhostBank):
         classes_used = 0
         model.eval()
         model_device = next(model.parameters()).device
+        t_rebuild_start = time.time()
+        print(f"[rebuild_selected] Starting. allocation len={len(allocation)}, bank keys={sorted(self._bank.keys())}", flush=True)
+        for cid, pool in self._bank.items():
+            print(f"  bank[{cid}] pool_size={len(pool)}", flush=True)
 
         with torch.inference_mode():
             for class_id, quota in enumerate(allocation):
@@ -137,23 +142,34 @@ class HerdingReplayBank(AbstractGhostBank):
                 if quota <= 0 or not pool:
                     continue
                 classes_used += 1
+                t_class = time.time()
                 if quota >= len(pool):
                     selected[class_id] = list(pool)
                     total_selected += len(pool)
+                    print(f"  class {class_id}: quota={quota} >= pool={len(pool)}, copied. ({time.time()-t_class:.2f}s)", flush=True)
                     continue
 
                 feats_chunks: list[torch.Tensor] = []
                 for start in range(0, len(pool), chunk_size):
                     end = min(start + chunk_size, len(pool))
+                    t_chunk = time.time()
                     raw_batch = torch.stack([_to_chw(item[0]) for item in pool[start:end]], dim=0)
+                    t_stack = time.time()
                     images_t = _transform_raw_batch(raw_batch, eval_transform).to(model_device)
+                    t_transform = time.time()
                     feats = model.extract_features(images_t).detach().cpu()
+                    t_feat = time.time()
                     feats_chunks.append(feats)
+                    print(f"  class {class_id}: chunk [{start}:{end}] stack={t_stack-t_chunk:.3f}s transform={t_transform-t_stack:.3f}s extract={t_feat-t_transform:.3f}s", flush=True)
 
                 feats_all = torch.cat(feats_chunks, dim=0)
+                t_herd = time.time()
                 pick = _herding_select(feats_all, quota)
+                t_herd_done = time.time()
                 selected[class_id] = [pool[i] for i in pick]
                 total_selected += len(selected[class_id])
+                print(f"  class {class_id}: pool={len(pool)} quota={quota} herding={t_herd_done-t_herd:.3f}s total={time.time()-t_class:.2f}s", flush=True)
+        print(f"[rebuild_selected] Done in {time.time()-t_rebuild_start:.2f}s. total_selected={total_selected}", flush=True)
 
         self._selected = selected
         return {
