@@ -1,0 +1,3 @@
+name: icarl
+retrieval_budget: 64
+warmup_steps: 0

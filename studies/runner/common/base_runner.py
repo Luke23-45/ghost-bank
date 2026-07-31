@@ -14,7 +14,7 @@ from src.bank.core.exposure import ExposureTracker
 from src.bank.core.pid_controller import PIDController
 from src.bank.strategies import StaticReplayBank, HerdingReplayBank
 from src.data.cifar100 import CIFAR100DataModule, CIFAR100Config
-from src.methods import BaselineMethod, Method, StaticBankMethod, UniformHerdingMethod
+from src.methods import BaselineMethod, Method, StaticBankMethod, UniformHerdingMethod, iCaRLMethod
 from src.models import ResNet, ResNetConfig
 from src.training import (
     ConsoleEpochCallback,
@@ -162,6 +162,12 @@ def create_method(
 
     if name == "uniform_herding":
         return UniformHerdingMethod(
+            retrieval_budget=mc.retrieval_budget,
+            warmup_steps=mc.get("warmup_steps", 0),
+        )
+
+    if name == "icarl":
+        return iCaRLMethod(
             retrieval_budget=mc.retrieval_budget,
             warmup_steps=mc.get("warmup_steps", 0),
         )

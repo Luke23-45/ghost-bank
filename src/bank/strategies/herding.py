@@ -70,6 +70,7 @@ class HerdingReplayBank(AbstractGhostBank):
         excluded = set(exclude_classes) if exclude_classes is not None else set()
         self._bank: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
         self._selected: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
+        self.class_means: dict[int, torch.Tensor] = {}
         self._seen_indices: set[int] = set()
         self._rng = random.Random(seed)
         self._total_budget = total_budget
@@ -143,12 +144,6 @@ class HerdingReplayBank(AbstractGhostBank):
                     continue
                 classes_used += 1
                 t_class = time.time()
-                if quota >= len(pool):
-                    selected[class_id] = list(pool)
-                    total_selected += len(pool)
-                    print(f"  class {class_id}: quota={quota} >= pool={len(pool)}, copied. ({time.time()-t_class:.2f}s)", flush=True)
-                    continue
-
                 feats_chunks: list[torch.Tensor] = []
                 for start in range(0, len(pool), chunk_size):
                     end = min(start + chunk_size, len(pool))
@@ -163,12 +158,21 @@ class HerdingReplayBank(AbstractGhostBank):
                     print(f"  class {class_id}: chunk [{start}:{end}] stack={t_stack-t_chunk:.3f}s transform={t_transform-t_stack:.3f}s extract={t_feat-t_transform:.3f}s", flush=True)
 
                 feats_all = torch.cat(feats_chunks, dim=0)
-                t_herd = time.time()
-                pick = _herding_select(feats_all, quota)
-                t_herd_done = time.time()
+
+                if quota >= len(pool):
+                    pick = list(range(len(pool)))
+                    print(f"  class {class_id}: quota={quota} >= pool={len(pool)}, copied. ({time.time()-t_class:.2f}s)", flush=True)
+                else:
+                    t_herd = time.time()
+                    pick = _herding_select(feats_all, quota)
+                    print(f"  class {class_id}: pool={len(pool)} quota={quota} herding={time.time()-t_herd:.3f}s total={time.time()-t_class:.2f}s", flush=True)
+                
+                # NME should use the mean of the *selected* exemplars
+                class_mean = feats_all[pick].mean(dim=0)
+                self.class_means[class_id] = class_mean.cpu()
+                
                 selected[class_id] = [pool[i] for i in pick]
                 total_selected += len(selected[class_id])
-                print(f"  class {class_id}: pool={len(pool)} quota={quota} herding={t_herd_done-t_herd:.3f}s total={time.time()-t_class:.2f}s", flush=True)
         print(f"[rebuild_selected] Done in {time.time()-t_rebuild_start:.2f}s. total_selected={total_selected}", flush=True)
 
         self._selected = selected

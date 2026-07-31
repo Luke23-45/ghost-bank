@@ -40,7 +40,7 @@ from src.data.cifar100.transforms import make_train_transform_from_rng
 from src.data.cifar100.transforms import make_eval_transform
 from studies.runner.common.path_utils import get_config_dir
 
-BANK_MAP = {"static_bank": "static", "uniform_herding": "herding"}
+BANK_MAP = {"static_bank": "static", "uniform_herding": "herding", "icarl": "herding"}
 
 
 def _aggregate_metrics(all_metrics: list[dict]) -> dict:
@@ -168,6 +168,8 @@ class CIFAR100Runner(AbstractRunner):
 
         for task_id in range(num_tasks):
             if task_id > 0:
+                if hasattr(method, "on_task_start"):
+                    method.on_task_start(model, task_id)
                 model.expand_head(classes_per_task)
                 if bank is not None:
                     bank.expand(classes_per_task)

@@ -123,7 +123,11 @@ class GhostBankLightningModule(pl.LightningModule):
         _, x, y = _unpack_batch(batch)
         logits = self.model(x)
         loss = F.cross_entropy(logits, y)
-        acc = (logits.argmax(dim=-1) == y).float().mean()
+        if hasattr(self.method, "predict"):
+            preds = self.method.predict(x, self, bank=self.bank)
+        else:
+            preds = logits.argmax(dim=-1)
+        acc = (preds == y).float().mean()
         self.log("val/loss", loss, on_epoch=True, on_step=False)
         self.log("val/acc", acc, on_epoch=True, on_step=False)
 
@@ -137,8 +141,11 @@ class GhostBankLightningModule(pl.LightningModule):
         batch_idx: int,
     ) -> None:
         _, x, y = _unpack_batch(batch)
-        logits = self.model(x)
-        preds = logits.argmax(dim=-1)
+        if hasattr(self.method, "predict"):
+            preds = self.method.predict(x, self, bank=self.bank)
+        else:
+            logits = self.model(x)
+            preds = logits.argmax(dim=-1)
         self.test_preds.append(preds.cpu())
         self.test_labels.append(y.cpu())
         acc = (preds == y).float().mean()
@@ -179,6 +186,8 @@ class GhostBankLightningModule(pl.LightningModule):
         dataloader_idx: int = 0,
     ) -> torch.Tensor:
         _, x, _ = _unpack_batch(batch)
+        if hasattr(self.method, "predict"):
+            return self.method.predict(x, self, bank=self.bank)
         return self.model(x).argmax(dim=-1)
 
     def configure_optimizers(self) -> dict | torch.optim.Optimizer:
