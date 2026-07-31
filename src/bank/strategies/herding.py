@@ -39,23 +39,19 @@ def _herding_select(features: torch.Tensor, budget: int) -> list[int]:
     class_mean = features.mean(dim=0)
     selected: list[int] = []
     selected_sum = torch.zeros_like(class_mean)
-    chosen: set[int] = set()
-    for _ in range(budget):
-        best_idx = -1
-        best_dist = float("inf")
-        for i in range(n):
-            if i in chosen:
-                continue
-            cand_mean = (selected_sum + features[i]) / (len(selected) + 1)
-            dist = torch.norm(class_mean - cand_mean).item()
-            if dist < best_dist:
-                best_dist = dist
-                best_idx = i
-        if best_idx < 0:
-            break
+    
+    available = torch.ones(n, dtype=torch.bool)
+    
+    for k in range(1, budget + 1):
+        target = k * class_mean - selected_sum
+        dists = torch.sum((features - target) ** 2, dim=1)
+        dists[~available] = float("inf")
+        best_idx = int(torch.argmin(dists).item())
+        
         selected.append(best_idx)
-        chosen.add(best_idx)
-        selected_sum = selected_sum + features[best_idx]
+        available[best_idx] = False
+        selected_sum += features[best_idx]
+        
     return selected
 
 
