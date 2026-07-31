@@ -315,5 +315,5 @@ class CIFAR100Runner(AbstractRunner):
 
 
 if __name__ == "__main__":
-    runner = CIFAR100Runner()
+    runner = CIFAR100Runner(overrides=sys.argv[1:])
     runner.run()
