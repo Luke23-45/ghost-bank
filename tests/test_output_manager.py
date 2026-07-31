@@ -112,6 +112,31 @@ class TestOutputManager:
         assert mgr.root == root
         assert "test_exp" in root
 
+    def test_same_second_collision_gets_suffix(self, tmp_path):
+        mgr1 = OutputManager(experiment="cifar100", base_dir=str(tmp_path), run_name="static_bank")
+        mgr1.timestamp = "20260801_013553"
+        root1 = mgr1.initialize()
+        mgr2 = OutputManager(experiment="cifar100", base_dir=str(tmp_path), run_name="static_bank")
+        mgr2.timestamp = "20260801_013553"
+        root2 = mgr2.initialize()
+        assert root1.endswith("20260801_013553")
+        assert root2.endswith("20260801_013553_1")
+        assert root1 != root2
+        assert os.path.isdir(os.path.join(root1, "metrics"))
+        assert os.path.isdir(os.path.join(root2, "metrics"))
+
+    def test_existing_timestamp_dir_does_not_merge(self, tmp_path):
+        root = os.path.join(str(tmp_path), "cifar100", "icarl", "20260801_013553")
+        os.makedirs(root)
+        with open(os.path.join(root, "leftover.txt"), "w") as f:
+            f.write("old")
+        mgr = OutputManager(experiment="cifar100", base_dir=str(tmp_path), run_name="icarl")
+        mgr.timestamp = "20260801_013553"
+        claimed = mgr.initialize()
+        assert claimed.endswith("20260801_013553_1")
+        assert os.path.isfile(os.path.join(claimed, "leftover.txt")) is False
+        assert os.path.isfile(os.path.join(root, "leftover.txt"))
+
     def test_double_initialize_raises(self, tmp_path):
         mgr = OutputManager(experiment="test_exp", base_dir=str(tmp_path))
         mgr.initialize()

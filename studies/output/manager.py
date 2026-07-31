@@ -10,9 +10,15 @@ from studies.output.writer import FORMAT_REGISTRY
 
 
 class OutputManager:
-    def __init__(self, experiment: str, base_dir: str = "output") -> None:
+    def __init__(
+        self,
+        experiment: str,
+        base_dir: str = "output",
+        run_name: str | None = None,
+    ) -> None:
         self.experiment = experiment
         self.base_dir = os.path.abspath(base_dir)
+        self.run_name = run_name
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.root: str | None = None
         self._fsm = OutputStateMachine()
@@ -23,13 +29,41 @@ class OutputManager:
             raise RuntimeError(
                 f"Cannot initialize: already in state {self._fsm.state.name}"
             )
-        self.root = os.path.join(self.base_dir, self.experiment, self.timestamp)
+        parts = [self.base_dir, self.experiment]
+        if self.run_name:
+            parts.append(self.run_name)
+        base = os.path.join(*parts)
+        os.makedirs(base, exist_ok=True)
+        self.root = self._claim_run_dir(base, self.timestamp)
         os.makedirs(os.path.join(self.root, "configs"), exist_ok=True)
         os.makedirs(os.path.join(self.root, "metrics"), exist_ok=True)
         os.makedirs(os.path.join(self.root, "results"), exist_ok=True)
         os.makedirs(os.path.join(self.root, "artifacts"), exist_ok=True)
         self._fsm.transition(OutputState.CONFIG_SAVED)
         return self.root
+
+    @staticmethod
+    def _claim_run_dir(base: str, timestamp: str) -> str:
+        """Atomically claim a fresh run directory under ``base``.
+
+        ``os.mkdir`` fails if the directory already exists, so a second
+        run started within the same second gets ``_1``, ``_2``, ...  Run
+        outputs are never merged or overwritten by later runs.
+        """
+        candidate = os.path.join(base, timestamp)
+        suffix = 1
+        while True:
+            try:
+                os.mkdir(candidate)
+                return candidate
+            except FileExistsError:
+                candidate = os.path.join(base, f"{timestamp}_{suffix}")
+                suffix += 1
+                if suffix > 10000:
+                    raise RuntimeError(
+                        f"Cannot allocate a unique output directory under {base!r} "
+                        f"for timestamp {timestamp!r}"
+                    )
 
     def save_config(self, config: dict | str, name: str = "resolved_config.yaml") -> None:
         self._require_state(OutputState.CONFIG_SAVED)

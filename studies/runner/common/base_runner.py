@@ -69,6 +69,7 @@ class AbstractRunner(ABC):
             mgr = OutputManager(
                 experiment=cfg.runner.experiment_name,
                 base_dir=cfg.output.base_dir,
+                run_name=run_name,
             )
             mgr.initialize()
             mgr.save_config(OmegaConf.to_yaml(cfg))
