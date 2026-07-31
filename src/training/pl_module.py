@@ -238,7 +238,7 @@ def _resolve_raw_from_train_loader(
     if dataset is None or not hasattr(dataset, "raw_images") or not hasattr(dataset, "raw_targets"):
         return None, None
     try:
-        idx_long = idx.long()
+        idx_long = idx.cpu().long()
         raw_x = dataset.raw_images[idx_long]
         raw_y = dataset.raw_targets[idx_long]
         return raw_x, raw_y
