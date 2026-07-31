@@ -59,7 +59,7 @@ class ResNet(BaseModel):
             self.in_planes = planes * BasicBlock.expansion
         return nn.Sequential(*layers)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layer1(out)
         out = self.layer2(out)
@@ -67,6 +67,10 @@ class ResNet(BaseModel):
         out = self.layer4(out)
         out = F.adaptive_avg_pool2d(out, 1)
         out = out.view(out.size(0), -1)
+        return out
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.extract_features(x)
         out = self.dropout(out)
         out = self.fc(out)
         return out
