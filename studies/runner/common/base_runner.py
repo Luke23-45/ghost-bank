@@ -125,19 +125,29 @@ def create_model(cfg: DictConfig, num_classes: int) -> ResNet:
     raise ValueError(f"Unsupported model type: {mc.type}")
 
 
-def create_bank(cfg: DictConfig, num_classes: int) -> AbstractGhostBank | None:
-    """Create a ghost bank from a Hydra config, or return None."""
+def create_bank(
+    cfg: DictConfig,
+    num_classes: int,
+    run_seed: int | None = None,
+) -> AbstractGhostBank | None:
+    """Create a ghost bank from a Hydra config, or return None.
+
+    ``run_seed`` seeds the bank's internal RNG when the config does not
+    specify an explicit ``bank.seed``, so replay sampling re-randomizes
+    across experiment runs instead of reusing one fixed draw.
+    """
     if "bank" not in cfg:
         return None
     bc = cfg.bank
     exclude = list(bc.get("exclude_classes", []))
+    seed = bc.get("seed", run_seed)
     if bc.name == "static":
-        return StaticReplayBank(num_classes, bc.capacity_per_class, bc.seed, exclude_classes=exclude)
+        return StaticReplayBank(num_classes, bc.capacity_per_class, seed, exclude_classes=exclude)
     if bc.name == "herding":
         return HerdingReplayBank(
             num_classes=num_classes,
             total_budget=cfg.data.get("memory_total", 2000),
-            seed=bc.seed,
+            seed=seed,
             floor=bc.get("floor", 1),
             exclude_classes=exclude,
         )
