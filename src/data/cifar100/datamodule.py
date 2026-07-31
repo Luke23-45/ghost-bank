@@ -60,6 +60,21 @@ class CIFAR100DataModule(BaseDataModule):
         self._test_images = torch.load(processed / "test_images.pt", weights_only=True)
         self._test_targets = torch.load(processed / "test_targets.pt", weights_only=True)
 
+        if self.config.seed is not None:
+            g = torch.Generator().manual_seed(self.config.seed)
+            total_classes = self.total_classes
+            class_order = torch.randperm(total_classes, generator=g).tolist()
+            mapping = {old_c: new_c for new_c, old_c in enumerate(class_order)}
+            
+            def _map_targets(targets: torch.Tensor) -> torch.Tensor:
+                t = targets.clone()
+                for old_c, new_c in mapping.items():
+                    t[targets == old_c] = new_c
+                return t
+                
+            all_train_targets = _map_targets(all_train_targets)
+            self._test_targets = _map_targets(self._test_targets)
+
         if self.config.probe_enabled:
             total_classes = self.total_classes
             splits = create_class_wise_splits(

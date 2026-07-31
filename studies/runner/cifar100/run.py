@@ -258,7 +258,10 @@ class CIFAR100Runner(AbstractRunner):
                 enable_checkpointing=False,
             )
 
-            val_loader = dm.get_task_test_loader(task_id)
+            val_loader = dm.get_val_task_loader(task_id)
+            if val_loader is None:
+                print("[WARNING] Val splits not found! Early stopping will monitor test set.", flush=True)
+                val_loader = dm.get_task_test_loader(task_id)
             print(f"[RUNNER] task={task_id} trainer.fit starting...", flush=True)
             import time as _time
             _t0 = _time.time()

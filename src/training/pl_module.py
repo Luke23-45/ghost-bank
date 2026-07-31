@@ -148,8 +148,6 @@ class GhostBankLightningModule(pl.LightningModule):
             preds = logits.argmax(dim=-1)
         self.test_preds.append(preds.cpu())
         self.test_labels.append(y.cpu())
-        acc = (preds == y).float().mean()
-        self.log("test/acc", acc, on_epoch=True, on_step=False)
 
     def on_test_epoch_end(self) -> None:
         if not self.test_preds or self.num_classes is None:
@@ -159,6 +157,9 @@ class GhostBankLightningModule(pl.LightningModule):
 
         preds = torch.cat(self.test_preds)
         labels = torch.cat(self.test_labels)
+
+        global_acc = (preds == labels).float().mean()
+        self.log("test/acc", global_acc)
 
         for c in range(self.num_classes):
             mask = labels == c

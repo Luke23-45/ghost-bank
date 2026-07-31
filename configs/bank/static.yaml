@@ -1,4 +1,4 @@
 name: static
-capacity_per_class: 200
+capacity_per_class: 20
 seed: 42
 exclude_classes: []
