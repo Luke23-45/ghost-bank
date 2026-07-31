@@ -267,6 +267,11 @@ class CIFAR100Runner(AbstractRunner):
             print(f"[RUNNER] task={task_id} trainer.fit done in {_time.time()-_t0:.1f}s", flush=True)
 
             if bank is not None and hasattr(bank, "rebuild_selected"):
+                # PyTorch Lightning moves the model to CPU after trainer.fit() finishes.
+                # We must manually move it back to the accelerator device for fast feature extraction.
+                accelerator_device = trainer.strategy.root_device
+                model.to(accelerator_device)
+
                 eval_transform = make_eval_transform(
                     mean=dm.config.mean,
                     std=dm.config.std,
@@ -282,7 +287,7 @@ class CIFAR100Runner(AbstractRunner):
                     model=model,
                     allocation=allocation,
                     eval_transform=eval_transform,
-                    device=next(model.parameters()).device,
+                    device=accelerator_device,
                 )
                 print(f"[RUNNER] task={task_id} rebuild_selected done in {_time.time()-_t1:.1f}s", flush=True)
 
