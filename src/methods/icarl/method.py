@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from src.bank.core.base import AbstractGhostBank
 from src.methods.base import Method, MethodContext
-
+from src.methods.static_bank.method import _augment_replay
 
 class iCaRLMethod(Method):
     """Incremental Classifier and Representation Learning (iCaRL) baseline.
@@ -41,23 +41,38 @@ class iCaRLMethod(Method):
         x, y = batch
         batch_size = x.size(0)
 
-        if bank is not None and pl_module.global_step >= self.warmup_steps:
-            replays = bank.query(self.retrieval_budget)
-            if replays:
-                rx, ry = zip(*replays)
-                if context and context.train_transform and context.augment_rng:
-                    rx_t = torch.stack(rx, dim=0)
-                    rx_t = rx_t.float().div(255.0)
-                    # Use standard uniform random state for train_transform during training
-                    rx_t = context.train_transform(rx_t)
-                else:
-                    rx_t = torch.stack(rx, dim=0)
-                
-                ry_t = torch.stack(ry, dim=0).to(x.device)
-                rx_t = rx_t.to(x.device)
-                
-                x = torch.cat([x, rx_t], dim=0)
-                y = torch.cat([y, ry_t], dim=0)
+        if bank is not None:
+            # Store RAW images (uint8 NHWC) for replay
+            if context is not None and context.raw_x is not None and context.raw_y is not None:
+                examples = list(zip(context.raw_x, context.raw_y.tolist()))
+                bank.store(examples, raw_indices=context.raw_indices)
+            else:
+                x_cpu = x.detach().cpu()
+                y_labels = y.detach().cpu().tolist()
+                bank.store([(x_i.clone(), y_i) for x_i, y_i in zip(x_cpu, y_labels)])
+
+            # Retrieve and augment exemplars
+            if pl_module.global_step >= self.warmup_steps:
+                replay_items = bank.query(self.retrieval_budget)
+                replay_x = _augment_replay(
+                    replay_items,
+                    transform=context.train_transform if context is not None else None,
+                    rng=context.augment_rng if context is not None else None,
+                    device=y.device,
+                )
+                replay_y = (
+                    torch.tensor(
+                        [int(item[1]) for item in replay_items],
+                        device=y.device,
+                        dtype=torch.long,
+                    )
+                    if replay_items
+                    else None
+                )
+
+                if replay_x is not None and replay_y is not None and replay_y.numel() > 0:
+                    x = torch.cat([x, replay_x], dim=0)
+                    y = torch.cat([y, replay_y], dim=0)
 
         logits = pl_module(x)
         num_classes = logits.size(1)
