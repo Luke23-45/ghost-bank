@@ -69,13 +69,22 @@ class ResNet(BaseModel):
         out = out.view(out.size(0), -1)
         return out
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, targets: torch.Tensor | None = None) -> torch.Tensor:
         out = self.extract_features(x)
         out = self.dropout(out)
-        out = self.fc(out)
+        
+        if targets is not None and getattr(self.fc, "accepts_targets", False):
+            out = self.fc(out, targets=targets)
+        else:
+            out = self.fc(out)
+            
         return out
 
     def expand_head(self, num_new_classes: int) -> None:
+        if hasattr(self.fc, "expand"):
+            self.fc.expand(num_new_classes)
+            return
+
         old_num = self.fc.in_features
         old_out = self.fc.out_features
         new_out = old_out + num_new_classes
@@ -100,4 +109,6 @@ class ResNet(BaseModel):
 
     @property
     def num_classes(self) -> int:
+        if hasattr(self.fc, "num_classes"):
+            return self.fc.num_classes
         return self.fc.out_features
