@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 sys = None
 from pathlib import Path
 import sys as _sys
@@ -51,6 +53,7 @@ def train(model, loader, use_targets, epochs, lr, wd):
     model.train()
     for _ in range(epochs):
         for x, y in loader:
+            x, y = x.to(device), y.to(device)
             opt.zero_grad()
             logits = model(x, y) if use_targets else model(x)
             F.cross_entropy(logits, y).backward()
@@ -62,6 +65,7 @@ def ev(model, loader):
     ok = tot = 0
     with torch.no_grad():
         for x, y in loader:
+            x, y = x.to(device), y.to(device)
             ok += (model(x).argmax(1) == y).sum().item()
             tot += y.size(0)
     return ok / tot
@@ -82,7 +86,7 @@ def run_regime(regime, seed):
         ("cosine", MarginCosineHead(DIM, nc, scale=regime["scale"], margin=0.0)),
         ("cosine_margin", MarginCosineHead(DIM, nc, scale=regime["scale"], margin=regime["margin"])),
     ]:
-        model = HB(make_backbone(regime["nonneg"]), head)
+        model = HB(make_backbone(regime["nonneg"]), head).to(device)
         ut = getattr(head, "accepts_targets", False)
         loader0 = DataLoader(TensorDataset(*sample(means, t0, regime["n_train"], regime["noise"])), 128, shuffle=True)
         loader1 = DataLoader(TensorDataset(torch.cat([sample(means, t1, regime["n_train"], regime["noise"])[0], X_old]),
