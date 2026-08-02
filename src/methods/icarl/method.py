@@ -82,7 +82,10 @@ class iCaRLMethod(Method):
         
         # Apply KD for old classes using the frozen snapshot
         if self.old_model is not None:
-            num_old_classes = self.old_model.fc.out_features
+            old_fc = self.old_model.fc
+            num_old_classes = getattr(
+                old_fc, "out_features", getattr(old_fc, "num_classes", 0)
+            )
             
             # Ensure the teacher model is on the correct device (GPU) 
             # since copy.deepcopy might have captured it on the CPU.

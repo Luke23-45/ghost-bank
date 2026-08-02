@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,8 +24,8 @@ class MarginCosineHead(nn.Module):
         self.accepts_targets = True
         
         # Learnable class prototypes (weights)
-        self.weight = nn.Parameter(torch.Tensor(num_classes, in_features))
-        nn.init.kaiming_uniform_(self.weight, a=torch.math.sqrt(5))
+        self.weight = nn.Parameter(torch.empty(num_classes, in_features))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
     def forward(self, features: torch.Tensor, targets: torch.Tensor | None = None) -> torch.Tensor:
         """
@@ -43,34 +45,69 @@ class MarginCosineHead(nn.Module):
         
         # 3. Apply margin (only during training when targets are provided)
         if self.training and self.margin > 0.0 and targets is not None:
-            # We subtract margin from the target class's cosine similarity.
-            # This makes the target class's logit artificially smaller during training,
-            # forcing the network to push the feature even closer to the correct prototype
+            # Subtract the margin from the target class's cosine similarity in place,
+            # forcing the network to push the feature closer to the correct prototype
             # to achieve the same loss, thereby creating a geometric margin.
-            
-            # create a mask for the target class
-            batch_size = features.size(0)
-            target_mask = torch.zeros_like(logits, dtype=torch.bool)
-            target_mask[torch.arange(batch_size, device=logits.device), targets] = True
-            
-            # Apply margin
-            logits = torch.where(target_mask, logits - self.margin, logits)
-            
+            index = torch.arange(logits.size(0), device=logits.device)
+            logits[index, targets] -= self.margin
+
         # 4. Scale logits
         logits = logits * self.scale
-        
+
         return logits
 
     def expand(self, num_new_classes: int) -> None:
         old_out = self.num_classes
         new_out = old_out + num_new_classes
         device = self.weight.device
-        
-        new_weight = nn.Parameter(torch.Tensor(new_out, self.in_features).to(device))
-        nn.init.kaiming_uniform_(new_weight, a=torch.math.sqrt(5))
-        
+
+        new_weight = nn.Parameter(torch.empty(new_out, self.in_features, device=device))
+        nn.init.kaiming_uniform_(new_weight, a=math.sqrt(5))
+
         with torch.no_grad():
             new_weight.data[:old_out] = self.weight.data
-            
+
         self.weight = new_weight
         self.num_classes = new_out
+
+    def imprint(
+        self,
+        features: torch.Tensor,
+        labels: torch.Tensor,
+        class_ids: list[int] | None = None,
+    ) -> None:
+        """Weight imprinting: initialize head rows with L2-normalized class-mean features.
+
+        Mirrors LUCIR/PODNet: new classes start from their data rather than from
+        random directions, so they do not initially overlap old prototypes.
+        Only the rows given in ``class_ids`` are touched; by default, every
+        class present in ``labels`` is imprinted.  Classes with no samples are
+        left untouched, as are out-of-range ids.
+        """
+        if class_ids is None:
+            ids = torch.unique(labels)
+        else:
+            ids = torch.unique(
+                torch.as_tensor(class_ids, dtype=labels.dtype, device=labels.device)
+            )
+        ids = ids[(ids >= 0) & (ids < self.weight.size(0))]
+        if ids.numel() == 0:
+            return
+
+        keep = torch.isin(labels, ids)
+        feats = features[keep]
+        lbls = labels[keep]
+        if feats.numel() == 0:
+            return
+
+        # Dense per-class means via a vectorized segment reduction over `ids`.
+        dense = torch.searchsorted(ids, lbls)  # ids is sorted (torch.unique)
+        sums = torch.zeros(ids.numel(), feats.size(1), dtype=feats.dtype, device=feats.device)
+        sums.index_add_(0, dense, feats)
+        counts = torch.bincount(dense, minlength=ids.numel())
+        nonempty = counts > 0
+        means = torch.zeros_like(sums)
+        means[nonempty] = F.normalize(sums[nonempty] / counts[nonempty].unsqueeze(1), dim=1)
+
+        with torch.no_grad():
+            self.weight.data[ids[nonempty]] = means[nonempty].to(device=self.weight.device)

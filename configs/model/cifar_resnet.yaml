@@ -3,3 +3,7 @@ depth: 18
 num_classes: 10
 base_filters: 64
 dropout: 0.0
+head: linear
+head_scale: 30.0
+head_margin: 0.35
+imprint: true

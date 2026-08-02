@@ -188,9 +188,8 @@ def summarize(name: str, results: list[dict]) -> None:
         std = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
         print(f"    {k:12s} = {mean * 100:6.1f}% +/- {std * 100:5.1f}%")
     for extra in ("w_norm_old", "w_norm_new"):
-        vals = [r[extra] for r in results if extra in r and not isinstance(r[extra], float) or extra in r]
         vals = [r[extra] for r in results if extra in r]
-        if vals and all(v == vals[0] or not (v != v) for v in vals):
+        if vals:
             mean = sum(vals) / len(vals)
             print(f"    {extra:12s} = {mean:.2f}")
 

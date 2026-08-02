@@ -122,6 +122,9 @@ def create_model(cfg: DictConfig, num_classes: int) -> ResNet:
             num_classes=num_classes,
             base_filters=mc.get("base_filters", 64),
             dropout=mc.get("dropout", 0.0),
+            head=mc.get("head", "linear"),
+            head_scale=mc.get("head_scale", 30.0),
+            head_margin=mc.get("head_margin", 0.35),
         )
     raise ValueError(f"Unsupported model type: {mc.type}")
 

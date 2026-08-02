@@ -89,8 +89,8 @@ class GhostBankLightningModule(pl.LightningModule):
                     type(method).__name__,
                 )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.model(x)
+    def forward(self, x: torch.Tensor, targets: torch.Tensor | None = None) -> torch.Tensor:
+        return self.model(x, targets=targets)
 
     def training_step(
         self,

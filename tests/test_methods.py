@@ -32,7 +32,7 @@ class MockModule(torch.nn.Module):
         self.exposure_tracker = None
         self._num_classes = num_classes
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, targets: torch.Tensor | None = None) -> torch.Tensor:
         return torch.randn(x.size(0), self._num_classes, requires_grad=True)
 
 

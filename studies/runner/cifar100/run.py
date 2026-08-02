@@ -15,6 +15,7 @@ from hydra import compose, initialize_config_dir
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import CSVLogger
+from torch.utils.data import DataLoader
 
 from src.bank.core.base import AbstractGhostBank
 from src.bank.core.exposure import ExposureTracker
@@ -260,6 +261,41 @@ class CIFAR100Runner(AbstractRunner):
 
         return aggregated
 
+    @staticmethod
+    def _imprint_head(
+        model: ResNet,
+        train_loader: DataLoader,
+        task_id: int,
+        classes_per_task: int,
+    ) -> None:
+        """LUCIR/PODNet-style weight imprinting for newly added head rows.
+
+        Runs one full pass of the new task's training data through the frozen
+        backbone and initializes the current task's head rows with L2-normalized
+        class-mean features, so new prototypes start from the data instead of
+        random directions.  Only rows of the current task's classes are touched;
+        task 0 keeps its random initialization (as in LUCIR).
+        """
+        if task_id == 0:
+            return
+        device = next(model.parameters()).device
+        class_ids = torch.arange(
+            task_id * classes_per_task,
+            (task_id + 1) * classes_per_task,
+            dtype=torch.long,
+        )
+        feats: list[torch.Tensor] = []
+        labels: list[torch.Tensor] = []
+        model.eval()
+        with torch.no_grad():
+            for _, x, y in train_loader:
+                mask = torch.isin(y, class_ids)
+                if bool(mask.any()):
+                    feats.append(model.extract_features(x.to(device))[mask.to(device)].detach().cpu())
+                    labels.append(y[mask])
+        if feats:
+            model.fc.imprint(torch.cat(feats), torch.cat(labels))
+
     def _run_single_seed(self, cfg: DictConfig, output_root: str, seed: int) -> dict:
         cfg.data.seed = seed
         pl.seed_everything(seed, workers=True)
@@ -320,6 +356,8 @@ class CIFAR100Runner(AbstractRunner):
                 bank.set_quotas(quota_alloc)
 
             train_loader, _ = dm.get_task_loaders(task_id)
+            if cfg.model.get("imprint", True) and hasattr(model.fc, "imprint"):
+                self._imprint_head(model, train_loader, task_id, classes_per_task)
             current_num_classes = (task_id + 1) * classes_per_task
 
             augment_rng = torch.Generator(device="cpu")

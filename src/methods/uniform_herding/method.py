@@ -29,7 +29,7 @@ class UniformHerdingMethod(Method):
     ) -> torch.Tensor:
         x, y = batch
         if bank is None:
-            return F.cross_entropy(pl_module(x), y)
+            return F.cross_entropy(pl_module(x, targets=y), y)
 
         if context is not None and context.raw_x is not None and context.raw_y is not None:
             examples = list(zip(context.raw_x, context.raw_y.tolist()))
@@ -61,4 +61,4 @@ class UniformHerdingMethod(Method):
                 x = torch.cat([x, replay_x], dim=0)
                 y = torch.cat([y, replay_y], dim=0)
 
-        return F.cross_entropy(pl_module(x), y)
+        return F.cross_entropy(pl_module(x, targets=y), y)

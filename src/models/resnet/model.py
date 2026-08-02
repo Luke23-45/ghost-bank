@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.models.base import BaseModel
+from src.models.heads.cosine_margin import MarginCosineHead
 
 
 def _conv3x3(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
@@ -36,7 +37,15 @@ class BasicBlock(nn.Module):
 
 
 class ResNet(BaseModel):
-    def __init__(self, num_classes: int = 10, base_filters: int = 64, dropout: float = 0.0) -> None:
+    def __init__(
+        self,
+        num_classes: int = 10,
+        base_filters: int = 64,
+        dropout: float = 0.0,
+        head: str = "linear",
+        head_scale: float = 30.0,
+        head_margin: float = 0.35,
+    ) -> None:
         super().__init__()
         self._base_filters = base_filters
         self._dropout_p = dropout
@@ -48,7 +57,16 @@ class ResNet(BaseModel):
         self.layer2 = self._make_layer(base_filters * 2, 2, stride=2)
         self.layer3 = self._make_layer(base_filters * 4, 2, stride=2)
         self.layer4 = self._make_layer(base_filters * 8, 2, stride=2)
-        self.fc = nn.Linear(base_filters * 8 * BasicBlock.expansion, num_classes)
+        in_features = base_filters * 8 * BasicBlock.expansion
+        if head == "cosine_margin":
+            self.fc = MarginCosineHead(
+                in_features,
+                num_classes,
+                scale=head_scale,
+                margin=head_margin,
+            )
+        else:
+            self.fc = nn.Linear(in_features, num_classes)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
     def _make_layer(self, planes: int, num_blocks: int, stride: int) -> nn.Sequential:

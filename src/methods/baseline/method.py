@@ -18,4 +18,4 @@ class BaselineMethod(Method):
         context: MethodContext | None = None,
     ) -> torch.Tensor:
         x, y = batch
-        return F.cross_entropy(pl_module(x), y)
+        return F.cross_entropy(pl_module(x, targets=y), y)
