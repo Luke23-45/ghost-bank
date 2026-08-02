@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from src.bank.core.base import AbstractGhostBank
 from src.methods.base import Method, MethodContext
+from src.methods.nme import nme_predict
 from src.methods.static_bank.method import _augment_replay
 
 class iCaRLMethod(Method):
@@ -108,32 +109,4 @@ class iCaRLMethod(Method):
 
     def predict(self, x: torch.Tensor, pl_module, bank: AbstractGhostBank | None = None) -> torch.Tensor:
         """Nearest Mean Exemplar (NME) Classification."""
-        if bank is None or not hasattr(bank, "class_means") or not bank.class_means:
-            # Fallback to linear fc if no class means are available
-            return pl_module.model(x).argmax(dim=-1)
-
-        # Ensure class means are a single tensor on the correct device
-        means_list = []
-        class_indices = []
-        for cid, mean_t in sorted(bank.class_means.items()):
-            means_list.append(mean_t)
-            class_indices.append(cid)
-            
-        means_tensor = torch.stack(means_list).to(x.device) # [num_classes, feature_dim]
-        
-        # Extract features
-        features = pl_module.model.extract_features(x) # [batch_size, feature_dim]
-        
-        # Normalize features like original iCaRL
-        features = F.normalize(features, p=2, dim=1)
-        means_tensor = F.normalize(means_tensor, p=2, dim=1)
-        
-        # Compute distances (L2)
-        dists = torch.cdist(features, means_tensor) # [batch_size, num_classes]
-        
-        # Find nearest
-        nearest_idx = dists.argmin(dim=1)
-        
-        # Map back to class indices just in case they aren't perfectly sequential
-        preds = torch.tensor([class_indices[i] for i in nearest_idx], device=x.device)
-        return preds
+        return nme_predict(x, pl_module, bank=bank)

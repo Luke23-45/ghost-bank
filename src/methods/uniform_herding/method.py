@@ -5,11 +5,17 @@ import torch.nn.functional as F
 
 from src.bank.core.base import AbstractGhostBank
 from src.methods.base import Method, MethodContext
+from src.methods.nme import nme_predict
 from src.methods.static_bank.method import _augment_replay
 
 
 class UniformHerdingMethod(Method):
-    """Replay method that uses a fixed-total herding bank."""
+    """Replay method that uses a fixed-total herding bank.
+
+    Predictions use the Nearest Mean Exemplar rule (the mean feature of the
+    selected exemplars per class), which pairs naturally with the cosine
+    margin head: both operate on L2-normalized prototypes in feature space.
+    """
 
     def __init__(
         self,
@@ -62,3 +68,7 @@ class UniformHerdingMethod(Method):
                 y = torch.cat([y, replay_y], dim=0)
 
         return F.cross_entropy(pl_module(x, targets=y), y)
+
+    def predict(self, x: torch.Tensor, pl_module, bank: AbstractGhostBank | None = None) -> torch.Tensor:
+        """Nearest Mean Exemplar (NME) Classification."""
+        return nme_predict(x, pl_module, bank=bank)

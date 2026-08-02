@@ -36,6 +36,28 @@ class MockModule(torch.nn.Module):
         return torch.randn(x.size(0), self._num_classes, requires_grad=True)
 
 
+class _IdentityBackbone(torch.nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x
+
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        return x
+
+
+class NmeMockModule(torch.nn.Module):
+    """PL stand-in whose ``model`` is an identity feature extractor.
+
+    ``extract_features`` is the identity, so NME predictions reduce to
+    nearest-neighbor on the raw input rows, which makes expected outputs
+    trivial to compute by hand.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.global_step = 1000
+        self.model = _IdentityBackbone()
+
+
 def _make_batch(
     batch_size: int = BATCH_SIZE,
     num_classes: int = NUM_CLASSES,
@@ -162,3 +184,51 @@ class TestUniformHerdingMethod:
         second_total = sum(len(pool) for pool in bank._bank.values())
 
         assert first_total == second_total
+
+
+# -- NME prediction (shared by uniform_herding and iCaRL) ----------------------
+
+class TestNmePrediction:
+    def _bank(self, means: dict[int, torch.Tensor] | None):
+        bank = HerdingReplayBank(num_classes=NUM_CLASSES, total_budget=20, seed=0)
+        if means is not None:
+            bank.class_means = means
+        return bank
+
+    def test_uniform_herding_uses_nearest_mean(self):
+        method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=0)
+        means = {0: torch.tensor([1.0, 0.0]), 1: torch.tensor([0.0, 1.0])}
+        x = torch.tensor([[2.0, 0.0], [0.0, 2.0], [3.0, 0.0]])
+        preds = method.predict(x, NmeMockModule(), bank=self._bank(means))
+        assert torch.equal(preds, torch.tensor([0, 1, 0]))
+
+    def test_uniform_herding_maps_non_contiguous_class_ids(self):
+        method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=0)
+        means = {5: torch.tensor([1.0, 0.0]), 9: torch.tensor([0.0, 1.0])}
+        x = torch.tensor([[2.0, 0.0], [0.0, 2.0], [3.0, 0.0]])
+        preds = method.predict(x, NmeMockModule(), bank=self._bank(means))
+        assert torch.equal(preds, torch.tensor([5, 9, 5]))
+
+    def test_uniform_herding_falls_back_without_bank(self):
+        method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=0)
+        x = torch.tensor([[2.0, 0.0], [0.0, 2.0], [3.0, 0.0]])
+        preds = method.predict(x, NmeMockModule(), bank=None)
+        assert preds.dtype == torch.long and preds.shape == (3,)
+        assert torch.equal(preds, x.argmax(dim=-1))
+
+    def test_uniform_herding_falls_back_with_empty_means(self):
+        method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=0)
+        x = torch.tensor([[2.0, 0.0], [0.0, 2.0], [3.0, 0.0]])
+        preds = method.predict(x, NmeMockModule(), bank=self._bank({}))
+        assert preds.dtype == torch.long and preds.shape == (3,)
+        assert torch.equal(preds, x.argmax(dim=-1))
+
+    def test_icarl_and_uniform_herding_agree(self):
+        from src.methods import iCaRLMethod
+
+        means = {5: torch.tensor([1.0, 0.0]), 9: torch.tensor([0.0, 1.0])}
+        x = torch.tensor([[2.0, 0.0], [0.0, 2.0], [3.0, 0.0]])
+        bank = self._bank(means)
+        a = UniformHerdingMethod().predict(x, NmeMockModule(), bank=bank)
+        b = iCaRLMethod().predict(x, NmeMockModule(), bank=bank)
+        assert torch.equal(a, b)
