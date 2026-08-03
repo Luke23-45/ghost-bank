@@ -162,8 +162,14 @@ def _build_run_meta(cfg: DictConfig, seeds: list[int], started_at: datetime) -> 
 
 class CIFAR100Runner(AbstractRunner):
     def compose_configs(self) -> list[tuple[DictConfig, str | None]]:
+        base_overrides_leaf = [
+            o for o in self.overrides if not o.startswith("method.")
+        ]
         with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
-            base_cfg = compose("config", overrides=self.overrides + ["+runner=cifar100"])
+            base_cfg = compose(
+                "config",
+                overrides=base_overrides_leaf + ["+runner=cifar100"],
+            )
 
         base_overrides = [
             "+runner=cifar100",
@@ -182,7 +188,7 @@ class CIFAR100Runner(AbstractRunner):
             with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
                 cfg = compose(
                     "config",
-                    overrides=self.overrides + base_overrides + method_overrides,
+                    overrides=method_overrides + self.overrides + base_overrides,
                 )
             pairs.append((cfg, method_name))
         return pairs
