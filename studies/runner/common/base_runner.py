@@ -179,6 +179,8 @@ def create_method(
         return UniformHerdingMethod(
             retrieval_budget=mc.retrieval_budget,
             warmup_steps=mc.get("warmup_steps", 0),
+            kd_weight=mc.get("kd_weight", 0.0),
+            kd_temperature=mc.get("kd_temperature", 2.0),
         )
 
     if name == "icarl":

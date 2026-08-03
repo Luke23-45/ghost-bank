@@ -125,6 +125,27 @@ class TestCreateMethod:
         method = create_method(cfg)
         assert isinstance(method, UniformHerdingMethod)
 
+    def test_uniform_herding_kd_params(self):
+        cfg = OmegaConf.create({
+            "method": {
+                "name": "uniform_herding",
+                "retrieval_budget": 8,
+                "kd_weight": 0.5,
+                "kd_temperature": 4.0,
+            }
+        })
+        method = create_method(cfg)
+        assert method.kd_weight == 0.5
+        assert method.kd_temperature == 4.0
+
+    def test_uniform_herding_kd_defaults(self):
+        cfg = OmegaConf.create({
+            "method": {"name": "uniform_herding", "retrieval_budget": 8}
+        })
+        method = create_method(cfg)
+        assert method.kd_weight == 0.0
+        assert method.kd_temperature == 2.0
+
     def test_unknown_method_raises(self):
         import pytest
         cfg = OmegaConf.create({"method": {"name": "unknown"}})

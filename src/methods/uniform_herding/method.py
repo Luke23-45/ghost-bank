@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import copy
+
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from src.bank.core.base import AbstractGhostBank
@@ -15,16 +18,36 @@ class UniformHerdingMethod(Method):
     Predictions use the Nearest Mean Exemplar rule (the mean feature of the
     selected exemplars per class), which pairs naturally with the cosine
     margin head: both operate on L2-normalized prototypes in feature space.
+
+    Optional knowledge distillation (``kd_weight > 0``): at the start of each
+    task a frozen snapshot of the model is cached before the head is expanded,
+    and a cross-entropy + KL(in Hinton's T-softened form) loss on the old
+    classes is used so that old-class scores are anchored to the teacher.
+    This mirrors the iCaRL KD teacher handling (device, dtype, autocast), but
+    keeps cross-entropy classification instead of iCaRL's per-class BCE.
     """
 
     def __init__(
         self,
         retrieval_budget: int = 64,
         warmup_steps: int = 0,
+        kd_weight: float = 0.0,
+        kd_temperature: float = 2.0,
     ) -> None:
         super().__init__()
         self.retrieval_budget = retrieval_budget
         self.warmup_steps = warmup_steps
+        self.kd_weight = kd_weight
+        self.kd_temperature = kd_temperature
+        self.old_model = None
+
+    def on_task_start(self, model: nn.Module, task_id: int) -> None:
+        """Cache the model before the head is expanded for KD distillation."""
+        if task_id > 0 and self.kd_weight > 0.0:
+            self.old_model = copy.deepcopy(model)
+            self.old_model.eval()
+            for param in self.old_model.parameters():
+                param.requires_grad = False
 
     def compute_loss(
         self,
@@ -67,7 +90,30 @@ class UniformHerdingMethod(Method):
                 x = torch.cat([x, replay_x], dim=0)
                 y = torch.cat([y, replay_y], dim=0)
 
-        return F.cross_entropy(pl_module(x, targets=y), y)
+        logits = pl_module(x, targets=y)
+        loss = F.cross_entropy(logits, y)
+
+        if self.old_model is not None:
+            old_fc = self.old_model.fc
+            num_old_classes = getattr(
+                old_fc, "out_features", getattr(old_fc, "num_classes", 0)
+            )
+            if num_old_classes > 0:
+                self.old_model.to(x.device)
+                with torch.no_grad():
+                    with torch.autocast(device_type=x.device.type, enabled=False):
+                        old_dtype = next(self.old_model.parameters()).dtype
+                        old_logits = self.old_model(x.to(dtype=old_dtype)).to(dtype=x.dtype)
+
+                t = self.kd_temperature
+                kd_loss = F.kl_div(
+                    F.log_softmax(logits[:, :num_old_classes].float() / t, dim=1),
+                    F.softmax(old_logits.float() / t, dim=1),
+                    reduction="batchmean",
+                ) * (t * t)
+                loss = loss.float() + self.kd_weight * kd_loss
+
+        return loss
 
     def predict(self, x: torch.Tensor, pl_module, bank: AbstractGhostBank | None = None) -> torch.Tensor:
         """Nearest Mean Exemplar (NME) Classification."""

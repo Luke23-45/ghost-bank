@@ -466,6 +466,8 @@ class CIFAR100Runner(AbstractRunner):
                 "memory_total": cfg.data.get("memory_total", 2000),
                 "retrieval_budget": cfg.method.get("retrieval_budget", 64),
                 "warmup_steps": cfg.method.get("warmup_steps", 0),
+                "kd_weight": cfg.method.get("kd_weight", 0.0),
+                "kd_temperature": cfg.method.get("kd_temperature", 2.0),
                 "bank": cfg.bank.name if "bank" in cfg else None,
                 "num_classes": current_num_classes,
             }
