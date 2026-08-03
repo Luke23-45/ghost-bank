@@ -33,12 +33,18 @@ class UniformHerdingMethod(Method):
         warmup_steps: int = 0,
         kd_weight: float = 0.0,
         kd_temperature: float = 2.0,
+        predict_mode: str = "nme",
     ) -> None:
         super().__init__()
         self.retrieval_budget = retrieval_budget
         self.warmup_steps = warmup_steps
         self.kd_weight = kd_weight
         self.kd_temperature = kd_temperature
+        self.predict_mode = predict_mode
+        if predict_mode not in ("nme", "head"):
+            raise ValueError(
+                f"predict_mode must be 'nme' or 'head', got {predict_mode!r}"
+            )
         self.old_model = None
 
     def on_task_start(self, model: nn.Module, task_id: int) -> None:
@@ -116,5 +122,11 @@ class UniformHerdingMethod(Method):
         return loss
 
     def predict(self, x: torch.Tensor, pl_module, bank: AbstractGhostBank | None = None) -> torch.Tensor:
-        """Nearest Mean Exemplar (NME) Classification."""
+        """Classify using the configured policy.
+
+        ``nme``: Nearest Mean Exemplar rule over the bank's selected exemplars.
+        ``head``: argmax over the head logits (the cosine margin classifier).
+        """
+        if self.predict_mode == "head":
+            return pl_module.model(x).argmax(dim=-1)
         return nme_predict(x, pl_module, bank=bank)

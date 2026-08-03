@@ -3,3 +3,4 @@ retrieval_budget: 64
 warmup_steps: 0
 kd_weight: 0.0
 kd_temperature: 2.0
+predict_mode: nme

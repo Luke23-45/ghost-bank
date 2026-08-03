@@ -154,6 +154,7 @@ def create_bank(
             seed=seed,
             floor=bc.get("floor", 1),
             exclude_classes=exclude,
+            selection=bc.get("selection", "herding"),
         )
     return None
 
@@ -181,6 +182,7 @@ def create_method(
             warmup_steps=mc.get("warmup_steps", 0),
             kd_weight=mc.get("kd_weight", 0.0),
             kd_temperature=mc.get("kd_temperature", 2.0),
+            predict_mode=mc.get("predict_mode", "nme"),
         )
 
     if name == "icarl":

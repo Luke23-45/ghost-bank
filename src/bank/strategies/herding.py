@@ -66,7 +66,12 @@ class HerdingReplayBank(AbstractGhostBank):
         seed: int,
         floor: int = 1,
         exclude_classes: Collection[int] | None = None,
+        selection: str = "herding",
     ) -> None:
+        if selection not in ("herding", "random"):
+            raise ValueError(
+                f"selection must be 'herding' or 'random', got {selection!r}"
+            )
         excluded = set(exclude_classes) if exclude_classes is not None else set()
         self._bank: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
         self._selected: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
@@ -76,6 +81,7 @@ class HerdingReplayBank(AbstractGhostBank):
         self._total_budget = total_budget
         self._floor = floor
         self._num_classes = num_classes
+        self._selection = selection
 
     @staticmethod
     def _to_tensor_label(y: object) -> torch.Tensor:
@@ -166,6 +172,10 @@ class HerdingReplayBank(AbstractGhostBank):
                     pick = list(range(len(pool)))
                     if verbose:
                         print(f"  class {class_id}: quota={quota} >= pool={len(pool)}, copied. ({time.time()-t_class:.2f}s)", flush=True)
+                elif self._selection == "random":
+                    pick = self._rng.sample(range(len(pool)), quota)
+                    if verbose:
+                        print(f"  class {class_id}: pool={len(pool)} quota={quota} random-selection ({time.time()-t_class:.2f}s)", flush=True)
                 else:
                     t_herd = time.time()
                     pick = _herding_select(feats_all, quota)
