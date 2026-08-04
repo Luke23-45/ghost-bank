@@ -162,8 +162,14 @@ def _build_run_meta(cfg: DictConfig, seeds: list[int], started_at: datetime) -> 
 
 class CIFAR100Runner(AbstractRunner):
     def compose_configs(self) -> list[tuple[DictConfig, str | None]]:
+        # ``bank.*`` overrides are held back from the base compose too: the
+        # base config has no ``bank`` group (it is attached per-method via
+        # BANK_MAP below), so a leaf override such as
+        # ``bank.capacity_per_class=20`` would otherwise crash with
+        # "Key 'bank' is not in struct" before the bank group exists.
         base_overrides_leaf = [
-            o for o in self.overrides if not o.startswith("method.")
+            o for o in self.overrides
+            if not o.startswith("method.") and not o.startswith("bank.")
         ]
         with initialize_config_dir(config_dir=get_config_dir(), version_base=None):
             base_cfg = compose(
