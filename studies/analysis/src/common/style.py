@@ -226,6 +226,7 @@ def save_figure(
     close: bool = True,
     dpi: int = DPI,
     bbox_inches: Optional[str] = None,
+    **kwargs
 ) -> List[Path]:
     """Save a figure to the target formats and close it.
 
@@ -247,13 +248,12 @@ def save_figure(
         out_path = path.parent / f"{path.name}.{fmt}"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         if bbox_inches is not None:
-            fig.savefig(str(out_path), format=fmt, dpi=dpi,  bbox_inches="tight")
+            fig.savefig(str(out_path), format=fmt, dpi=dpi, bbox_inches="tight", **kwargs)
         else:
-            fig.savefig(str(out_path), format=fmt, dpi=dpi)
+            fig.savefig(str(out_path), format=fmt, dpi=dpi, **kwargs)
         written.append(out_path)
         logger.debug("Saved figure: %s", out_path)
 
     if close:
         plt.close(fig)
     return written
-

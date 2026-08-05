@@ -217,6 +217,8 @@ def plot_forgetting_by_age(
     *,
     title: str,
     fill_gradient: bool = True,
+    show_ylabel: bool = True,
+    show_xlabel: bool = True,
 ) -> None:
     """Per-task forgetting vs task index (0 = oldest).
 
@@ -228,19 +230,21 @@ def plot_forgetting_by_age(
     if ref is not None:
         ax.plot(xs, ref.per_task_forgetting(), color=C.color_for(ref.key),
                 marker="o", markersize=5, linewidth=1.5, alpha=0.7,
-                label=C.display_name(ref.key))
+                label=C.display_name(ref.key), zorder=4)
     f = run.per_task_forgetting()
     ax.plot(xs, f, color=C.color_for(run.key), marker="s", markersize=6, linewidth=2.0,
-            label=C.display_name(run.key))
+            label=C.display_name(run.key), zorder=3)
     if fill_gradient:
         for j in TASK_TICKS:
             ax.axvspan(j - 0.4, j + 0.4, color=AGE_CMAP((j + 1) / len(TASK_TICKS)), alpha=0.06)
     ax.set_xticks(TASK_TICKS)
     ax.set_xticklabels([f"T{t}" for t in TASK_TICKS])
-    ax.set_xlabel("Task")
-    ax.set_ylabel("Forgetting (pp)")
+    if show_xlabel:
+        ax.set_xlabel("Task")
+    if show_ylabel:
+        ax.set_ylabel("Forgetting (pp)")
     ax.set_title(title, loc="center")
-    ax.axhline(0, color=APPLE["ink"], linewidth=0.8, linestyle=":")
+    ax.plot([xs[0], xs[-1]], [0, 0], color=APPLE["ink"], linewidth=0.8, linestyle=":", zorder=1)
     return None
 
 

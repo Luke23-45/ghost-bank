@@ -26,7 +26,9 @@ from src.common.plotting import (
 )
 from src.common.style import (
     APPLE,
+    PALETTE,
     FONT_SIZE_TICK,
+    FONT_SIZE_ANNOT,
     apply_thesis_style,
     create_figure,
     save_figure,
@@ -211,24 +213,35 @@ def fig3_resource_sensitivity(runs: Dict[str, RunResult], out_dir: Path) -> List
             ax = axes[row, 0]
             ax.errorbar(xs, accs, yerr=acc_stds, color=C.color_for(REF),
                         marker="o", markersize=6, linewidth=2.0, capsize=4, elinewidth=1.2)
-            ax.set_xlabel(xlabel)
+            ax.set_xlabel(xlabel + "\n" if row == 0 else xlabel)
             ax.set_ylabel("Average accuracy (%)")
             ax.set_title(f"({'a' if axis == 'memory' else 'c'}) {axis.title()} budget — Accuracy", loc="center")
-            ax.set_xlim(xs.min() - pad, xs.max() + pad)
             if axis == "retrieval":
+                ax.set_xscale("log", base=2)
+                ax.set_xlim(24, 170)
                 ax.set_xticks([32, 64, 128])
+                ax.set_xticklabels(["32", "64", "128"])
                 ax.set_ylim(40, 50)
+            elif axis == "memory":
+                ax.set_xlim(xs.min() - pad, xs.max() + pad)
+                ax.set_xticks([500, 2000, 4000])
 
             ax = axes[row, 1]
             ax.errorbar(xs, fors, yerr=for_stds, color=PALETTE["wine"],
                         marker="s", markersize=6, linewidth=2.0, capsize=4, elinewidth=1.2)
-            ax.set_xlabel(xlabel)
+            ax.set_xlabel(xlabel + "\n" if row == 0 else xlabel)
             ax.set_ylabel("Forgetting (%)")
             ax.set_title(f"({'b' if axis == 'memory' else 'd'}) {axis.title()} budget — Forgetting", loc="center")
-            ax.set_xlim(xs.min() - pad, xs.max() + pad)
             if axis == "retrieval":
+                ax.set_xscale("log", base=2)
+                ax.set_xlim(24, 170)
                 ax.set_xticks([32, 64, 128])
+                ax.set_xticklabels(["32", "64", "128"])
                 ax.set_ylim(11, 19)
+                ax.set_yticks([12, 14, 16, 18])
+            elif axis == "memory":
+                ax.set_xlim(xs.min() - pad, xs.max() + pad)
+                ax.set_xticks([500, 2000, 4000])
 
             finish_axes(axes[row, 0])
             finish_axes(axes[row, 1])
@@ -238,37 +251,77 @@ def fig3_resource_sensitivity(runs: Dict[str, RunResult], out_dir: Path) -> List
 
 # ── Fig 4: accuracy vs forgetting scatter with error bars ────────────
 def fig4_acc_forgetting_scatter(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
-    """All 11 runs: forgetting (x) vs average accuracy (y), +-1 std bars."""
+    """All 11 runs: forgetting (x) vs average accuracy (y) trade-off space."""
     with apply_thesis_style():
-        fig, ax = create_figure(width="double", aspect=0.66)
+        fig, ax = create_figure(width="double", aspect=0.9)
+        
+        # 1. Collect points
+        points = []
         for key in C.MASTER_ORDER:
-            run = runs[key]
-            f = run.forgetting * 100.0
-            a = run.avg_acc * 100.0
-            ferr = run.forgetting_std * 100.0
-            aerr = run.avg_acc_std * 100.0
-            is_ref = key == REF
-            ax.errorbar(
-                f, a,
-                xerr=ferr, yerr=aerr,
-                fmt="none",
-                ecolor=C.color_for(key),
-                elinewidth=1.2,
-                capsize=3,
-                alpha=0.6,
-                zorder=2,
-            )
-            ax.scatter(f, a, s=130 if is_ref else 85, color=C.color_for(key),
-                       marker=C.marker_for(key), edgecolor="white", linewidth=1.2,
-                       zorder=5 if is_ref else 3,
+            f = runs[key].forgetting * 100.0
+            a = runs[key].avg_acc * 100.0
+            points.append((f, a, key))
+            
+        # 2. Scatter plot without error bars
+        for f, a, key in points:
+            is_ref = (key == REF)
+            marker = C.marker_for(key)
+            
+            # Boost size of spiky markers to match visual weight of dense shapes
+            if marker in ['*', 'X', 'x', '+', 'P']:
+                size = 300
+            elif is_ref:
+                size = 280
+            else:
+                size = 220
+                
+            # Explicitly elevate zorder of overlapping/tiny markers
+            z = 5 if key == "a3_linear_head" else (3 if is_ref else 4)
+            
+            ax.scatter(f, a, s=size, color=C.color_for(key),
+                       marker=marker, edgecolor="white", linewidth=1.2,
+                       zorder=z,
                        label=C.display_name(key))
+                       
+        # 3. Add directional arrow
+        ax.annotate("Better performance", xy=(0.02, 0.95), xytext=(0.10, 0.85),
+                    xycoords='axes fraction', textcoords='axes fraction',
+                    arrowprops=dict(arrowstyle="->", color=APPLE["muted"], lw=1.5),
+                    fontsize=FONT_SIZE_ANNOT, color=APPLE["muted"], ha="center", va="center")
+
         ax.set_xlabel("Forgetting (%)")
         ax.set_ylabel("Average accuracy (%)")
-        ax.set_title("Accuracy vs forgetting — upper-left is best (±1 std)", loc="center")
+        ax.set_title("Accuracy vs. Forgetting Trade-off", loc="center")
         ax.set_ylim(25, 55)
         ax.set_xlim(0, 60)
         finish_axes(ax)
-        styled_legend(ax, loc="lower left", ncol=3, fontsize=8)
+        
+        # 4. Logical Legend Grouping
+        handles, labels = ax.get_legend_handles_labels()
+        label_to_handle = {lbl: hdl for lbl, hdl in zip(labels, handles)}
+        
+        from matplotlib.lines import Line2D
+        dummy_handle = Line2D([], [], linestyle='none')
+        label_to_handle[""] = dummy_handle
+        
+        # We want 3 columns: Core, Ablations, Sweeps
+        target_cols = [
+            ["Uniform herding (Reference)", "iCaRL", "Static bank", ""],
+            ["Ref. without KD", "Ref. head-logit eval", "Ref. linear head", "Ref. random selection"],
+            ["Memory 500", "Memory 4000", "Retrieval 32", "Retrieval 128"]
+        ]
+        
+        # Matplotlib natively fills legends column-by-column in a top-down fashion.
+        # By providing a flat list of exactly 12 items (padded with our dummy handle in Col 1),
+        # it will perfectly slice them into 3 columns of 4 rows.
+        ordered_labels = target_cols[0] + target_cols[1] + target_cols[2]
+            
+        ordered_handles = [label_to_handle[lbl] for lbl in ordered_labels if lbl in label_to_handle]
+        ordered_labels_present = [lbl for lbl in ordered_labels if lbl in label_to_handle]
+        
+        # Use tighter columnspacing to prevent collision, and labelspacing/markerscale to fix vertical overlap
+        styled_legend(ax, handles=ordered_handles, labels=ordered_labels_present, loc="upper right", ncol=3, fontsize=8, columnspacing=1.0, labelspacing=1.5, markerscale=0.7)
+        
         return save_figure(fig, out_dir / MAIN_OUT / "fig4_acc_forgetting_scatter")
 
 
@@ -288,21 +341,47 @@ def fig5_forgetting_by_age(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
             ax_a, runs["static_bank"], ref=runs[REF],
             title="(a) Static bank",
             fill_gradient=True,
+            show_xlabel=False,
         )
         ax_a.set_ylim(-3, 65)
         finish_axes(ax_a)
-        styled_legend(ax_a, loc="upper right", fontsize=8.5)
 
         plot_forgetting_by_age(
             ax_b, runs["a2_head_eval"], ref=runs[REF],
             title="(b) Head-logit eval",
             fill_gradient=True,
+            show_xlabel=False,
+            show_ylabel=False,
         )
         ax_b.set_ylim(-3, 65)
         finish_axes(ax_b)
-        styled_legend(ax_b, loc="upper right", fontsize=8.5)
 
-        return save_figure(fig, out_dir / MAIN_OUT / "fig5_forgetting_by_age")
+        # Unified legend below both panels
+        handles_a, labels_a = ax_a.get_legend_handles_labels()
+        handles_b, labels_b = ax_b.get_legend_handles_labels()
+        
+        unique = {}
+        for h, l in zip(handles_a + handles_b, labels_a + labels_b):
+            if l not in unique:
+                unique[l] = h
+        
+        fig.text(0.54, -0.04, "Task", ha="center", va="center", fontsize=10)
+        fig.subplots_adjust(bottom=-0.22)
+        fig.legend(
+            list(unique.values()), list(unique.keys()),
+            loc="outside lower center",
+            ncol=3,
+            bbox_to_anchor=(0.54, -0.18),
+            fontsize=8,
+            frameon=True,
+            framealpha=0.92,
+            edgecolor="#D1D1D6",
+            fancybox=True,
+            columnspacing=1.5,
+            handletextpad=0.6,
+        )
+
+        return save_figure(fig, out_dir / MAIN_OUT / "fig5_forgetting_by_age", bbox_inches="tight")
 
 
 # ── Registry (keys match C.PAPER_MAIN_FIGURES) ───────────────────────
