@@ -12,7 +12,7 @@ New runs (e.g. an extended memory curve) only need a new entry here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from src.common.style import SERIES_COLORS
 
@@ -27,7 +27,7 @@ NUM_TASKS = 10
 DISPLAY_NAMES: Dict[str, str] = {
     "icarl":               "iCaRL",
     "static_bank":         "Static bank",
-    "uniform_herding":     "Uniform herding",
+    "uniform_herding":     "Uniform herding (Reference)",
     "a1_no_kd":            "Ref. without KD",
     "a2_head_eval":        "Ref. head-logit eval",
     "a3_linear_head":      "Ref. linear head",
@@ -101,7 +101,7 @@ MASTER_ORDER: List[str] = [
 # ── Style assignment (stable, colorblind-safe) ───────────────────────
 COLORS: Dict[str, str] = {
     "icarl":           SERIES_COLORS[3],   # rose
-    "static_bank":     SERIES_COLORS[6],   # sky
+    "static_bank":     "#007AFF",          # Apple blue (darker than sky for contrast)
     "uniform_herding": SERIES_COLORS[0],   # indigo (reference; always emphasized)
     "a1_no_kd":        SERIES_COLORS[4],   # olive
     "a2_head_eval":    SERIES_COLORS[5],   # wine
@@ -115,21 +115,13 @@ COLORS: Dict[str, str] = {
 
 MARKERS: Dict[str, str] = {
     "icarl": "o", "static_bank": "s", "uniform_herding": "D",
-    "a1_no_kd": "^", "a2_head_eval": "v", "a3_linear_head": "<", "a4_random_bank": ">",
+    "a1_no_kd": "p", "a2_head_eval": "P", "a3_linear_head": "*", "a4_random_bank": "X",
     "s1_budget500": "P", "s2_budget4000": "*", "s3_retr32": "X", "s4_retr128": "h",
 }
 
 # Headline pairs for the resource story (x value -> experiment key)
 MEMORY_X: Dict[float, str] = {500: "s1_budget500", 2000: "uniform_herding", 4000: "s2_budget4000"}
 RETRIEVAL_X: Dict[float, str] = {32: "s3_retr32", 64: "uniform_herding", 128: "s4_retr128"}
-
-# Attribute story (component -> ablation key that removes it)
-ATTRIBUTION_ORDER: List[Tuple[str, str, float]] = [
-    ("NME readout (a2)", "a2_head_eval", -0.104),
-    ("Herding selection (a4)", "a4_random_bank", -0.048),
-    ("Cosine-margin head (a3)", "a3_linear_head", -0.014),
-    ("KD stability (a1)", "a1_no_kd", -0.002),
-]
 
 
 def display_name(key: str) -> str:
@@ -158,31 +150,39 @@ def reference_key() -> str:
     return "uniform_herding"
 
 
-# ── Output layout (mirror of the run-directory structure) ────────────
-# The analysis writes under the same family/type/experiment hierarchy as
-# experiment_output/, with a figures/ (or tables/) subdir at each level:
-#   outputs/ablation/component/a1_no_kd/figures/per_task_curve.png
-#   outputs/ablation/component/figures/component_comparison.png
-#   outputs/baseline/uniform_herding/figures/trajectory_fan.png
-FAMILY_OUTPUT_DIRS: Dict[str, Path] = {
-    "baselines":     Path("baseline"),
-    "component":     Path("ablation/component"),
-    "sensitivity":   Path("ablation/sensitivity"),
-    "cross_cutting": Path("cross_cutting"),
-}
+# ── Paper output layout ──────────────────────────────────────────────
+# The manuscript pipeline writes only the approved figure/table set:
+#   outputs/paper/main/figures/      (Fig 1-5)
+#   outputs/paper/appendix/figures/  (Fig A1-A4)
+#   outputs/paper/tables/            (T1-T3, A1-A6; .tex/.md pairs)
+PAPER_MAIN_FIGURES_DIR: Path = Path("paper/main/figures")
+PAPER_APPENDIX_FIGURES_DIR: Path = Path("paper/appendix/figures")
+PAPER_TABLES_DIR: Path = Path("paper/tables")
 
+# ── Paper figure registry (single source of truth for the manuscript) ─
+PAPER_MAIN_FIGURES: List[str] = [
+    "fig1_per_task_accuracy",
+    "fig2_component_attribution",
+    "fig3_resource_sensitivity",
+    "fig4_acc_forgetting_scatter",
+    "fig5_forgetting_by_age",
+]
 
-def family_output_dir(family: str) -> Path:
-    """Relative output dir for a family, mirroring experiment_output/."""
-    return FAMILY_OUTPUT_DIRS[family]
+PAPER_APPENDIX_FIGURES: List[str] = [
+    "figA1_forgetting_heatmap",
+    "figA2_evolution_reference",
+    "figA3_evolution_icarl",
+    "figA4_stability_slopes",
+]
 
-
-def experiment_output_subdir(key: str) -> Path:
-    """Relative output subdir for one experiment, mirroring its run directory."""
-    if key in BASELINE_KEYS:
-        return FAMILY_OUTPUT_DIRS["baselines"] / key
-    if key in COMPONENT_KEYS:
-        return FAMILY_OUTPUT_DIRS["component"] / key
-    if key in SENSITIVITY_KEYS:
-        return FAMILY_OUTPUT_DIRS["sensitivity"] / key
-    raise KeyError(f"unknown experiment key: {key}")
+PAPER_TABLES: List[str] = [
+    "T1_master_results",
+    "T2_component_ablations",
+    "T3_resource_sensitivity",
+    "A1_protocol",
+    "A2_per_task_accuracies",
+    "A3_per_task_forgetting",
+    "A4_per_seed_metrics",
+    "A5_compute_cost",
+    "A6_bank_sizes",
+]

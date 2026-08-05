@@ -1,0 +1,306 @@
+"""Independent post-generation verification for the paper artifact set.
+
+Re-derives every number the paper tables/figures present directly from the
+persisted run artifacts (``experiment_output/**``) and diffs them against
+the triple-checked values documented in ``docs/paper/analysis/analysis_plan.md``
+(Sections 2.1-2.4) and ``docs/paper/analysis/table_plan.md``. Any mismatch
+fails the run with exit code 1.
+
+This script intentionally re-computes values rather than reading the
+generated files, so a wrong number cannot survive by being written twice.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from typing import Callable, Dict, List, Sequence, Tuple
+
+# Bootstrap: ensure studies/analysis (the package parent) is importable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+import numpy as np
+from scipy import stats
+
+from src.common import constants as C
+from src.common.config import get_config, get_output_root
+from src.common.data import RunResult, load_all_runs, matched_deltas
+from src.paper import appendix_figures, main_figures, tables
+
+FAILURES: List[str] = []
+CHECKS = 0
+
+
+def check(name: str, ok: bool, detail: str = "") -> None:
+    global CHECKS
+    CHECKS += 1
+    status = "PASS" if ok else "FAIL"
+    line = f"[{status}] {name}"
+    if detail:
+        line += f" — {detail}"
+    print(line)
+    if not ok:
+        FAILURES.append(f"{name}: {detail}")
+
+
+def close(actual: float, expected: float, tol: float) -> bool:
+    return abs(actual - expected) <= tol
+
+
+def close_arr(actual: Sequence[float], expected: Sequence[float], tol: float) -> bool:
+    return len(actual) == len(expected) and all(close(a, e, tol) for a, e in zip(actual, expected))
+
+
+# ── 2.1 master results (verified against the report) ─────────────────
+MASTER: Dict[str, Tuple[float, float, float, float, float, float]] = {
+    # key: (avg_acc, avg_acc_std, forgetting, forgetting_std, bwt, bwt_std)
+    "icarl":           (0.4236, 0.0087, 0.1946, 0.0010, -0.1946, 0.0010),
+    "static_bank":     (0.2860, 0.0135, 0.5586, 0.0142, -0.5586, 0.0142),
+    "uniform_herding": (0.4499, 0.0100, 0.1385, 0.0044, -0.1354, 0.0039),
+    "a1_no_kd":        (0.4479, 0.0031, 0.2478, 0.0081, -0.2478, 0.0081),
+    "a2_head_eval":    (0.3461, 0.0113, 0.4636, 0.0163, -0.4636, 0.0163),
+    "a3_linear_head":  (0.4357, 0.0047, 0.1468, 0.0048, -0.1434, 0.0060),
+    "a4_random_bank":  (0.4017, 0.0017, 0.1835, 0.0061, -0.1775, 0.0044),
+    "s1_budget500":    (0.3683, 0.0036, 0.1963, 0.0101, -0.1963, 0.0101),
+    "s2_budget4000":   (0.4766, 0.0072, 0.1267, 0.0103, -0.1212, 0.0090),
+    "s3_retr32":       (0.4328, 0.0061, 0.1498, 0.0099, -0.1467, 0.0085),
+    "s4_retr128":      (0.4481, 0.0078, 0.1466, 0.0075, -0.1438, 0.0062),
+}
+
+# ── 2.3 per-task final accuracies (%) ────────────────────────────────
+PER_TASK_ACC: Dict[str, List[float]] = {
+    "icarl":           [48.4, 40.3, 40.7, 43.0, 39.0, 44.0, 37.0, 45.7, 45.8, 39.5],
+    "static_bank":     [29.5, 20.7, 22.5, 21.9, 19.6, 23.6, 15.8, 25.7, 31.5, 75.2],
+    "uniform_herding": [54.5, 44.5, 46.3, 49.3, 42.6, 46.4, 34.7, 44.2, 43.4, 44.0],
+    "a1_no_kd":        [48.3, 42.1, 42.8, 44.9, 40.8, 46.6, 39.4, 45.8, 44.5, 52.7],
+    "a2_head_eval":    [30.1, 17.7, 22.9, 26.6, 22.7, 28.0, 24.0, 42.6, 55.4, 76.1],
+    "a3_linear_head":  [50.9, 43.1, 41.8, 46.3, 40.4, 45.7, 37.5, 47.2, 45.1, 37.7],
+    "a4_random_bank":  [46.2, 40.1, 40.1, 43.0, 36.5, 41.2, 28.8, 41.8, 42.4, 41.6],
+    "s1_budget500":    [44.0, 37.2, 36.4, 37.6, 32.2, 36.2, 28.2, 38.2, 39.0, 39.4],
+    "s2_budget4000":   [55.4, 48.2, 49.4, 51.9, 45.4, 47.8, 38.4, 47.9, 46.2, 45.9],
+    "s3_retr32":       [53.2, 43.3, 44.2, 45.5, 39.7, 43.2, 32.7, 43.8, 44.0, 43.2],
+    "s4_retr128":      [54.9, 43.8, 46.9, 48.2, 41.1, 46.2, 35.8, 44.8, 43.6, 42.8],
+}
+
+# ── 2.4 per-task forgetting (intro - final, pp) ──────────────────────
+PER_TASK_FORGET: Dict[str, List[float]] = {
+    "icarl":           [36.0, 31.9, 29.7, 22.9, 17.5, 14.6, 10.3, 7.0, 5.3, 0.0],
+    "static_bank":     [53.2, 55.8, 58.5, 57.6, 55.2, 59.0, 57.7, 54.9, 50.8, 0.0],
+    "uniform_herding": [26.8, 12.0, 16.7, 10.4, 12.8, 10.9, 14.1, 10.7, 7.6, 0.0],
+    "a1_no_kd":        [33.0, 32.2, 32.2, 26.2, 24.3, 23.1, 17.7, 18.2, 16.1, 0.0],
+    "a2_head_eval":    [49.9, 50.6, 54.6, 47.6, 51.4, 51.6, 47.9, 38.1, 25.5, 0.0],
+    "a3_linear_head":  [33.9, 25.8, 26.1, 17.3, 12.4, 8.3, 4.6, 1.9, -1.2, 0.0],
+    "a4_random_bank":  [35.1, 14.1, 20.0, 16.8, 18.1, 15.5, 18.8, 11.9, 9.5, 0.0],
+    "s1_budget500":    [37.2, 19.4, 25.3, 21.7, 20.3, 17.8, 16.3, 13.4, 5.1, 0.0],
+    "s2_budget4000":   [25.9, 7.8, 14.5, 11.4, 10.6, 13.3, 11.5, 8.2, 6.1, 0.0],
+    "s3_retr32":       [28.1, 11.6, 18.5, 13.8, 14.4, 15.2, 14.4, 9.1, 6.9, 0.0],
+    "s4_retr128":      [26.3, 14.1, 17.1, 14.2, 14.4, 13.0, 12.6, 9.7, 7.9, 0.0],
+}
+
+# ── 2.2 matched per-seed deltas (pp) ─────────────────────────────────
+MATCHED_DELTAS: Dict[str, Tuple[float, float]] = {
+    "a1_no_kd":        (-0.206667, 10.925926),
+    "a2_head_eval":    (-10.383333, 32.503704),
+    "a3_linear_head":  (-1.423333, 0.825926),
+    "a4_random_bank":  (-4.826666, 4.496296),
+    "s1_budget500":    (-8.166666, 5.774074),
+    "s2_budget4000":   (2.663334, -1.181482),
+    "s3_retr32":       (-1.713334, 1.129630),
+    "s4_retr128":      (-0.183333, 0.811111),
+}
+
+# ── A6 bank sizes ────────────────────────────────────────────────────
+BANK_SIZES: Dict[int, List[Tuple[int, int]]] = {
+    500:  [(50, 50), (25, 25), (16, 17), (12, 13), (10, 10),
+           (8, 9), (7, 8), (6, 7), (5, 6), (5, 5)],
+    2000: [(200, 200), (100, 100), (66, 67), (50, 50), (40, 40),
+           (33, 34), (28, 29), (25, 25), (22, 23), (20, 20)],
+    4000: [(400, 400), (200, 200), (133, 134), (100, 100), (80, 80),
+           (66, 67), (57, 58), (50, 50), (44, 45), (40, 40)],
+}
+
+# ── A5 wall-time means (s) ───────────────────────────────────────────
+WALL_TIMES: Dict[str, float] = {
+    "icarl": 3754.79, "static_bank": 2716.31, "uniform_herding": 4493.24,
+    "a1_no_kd": 3307.75, "a2_head_eval": 4279.52, "a3_linear_head": 3732.10,
+    "a4_random_bank": 4555.95, "s1_budget500": 4292.41, "s2_budget4000": 4351.72,
+    "s3_retr32": 3958.08, "s4_retr128": 5919.20,
+}
+
+# ── reference per-task forgetting std (population over seeds) ────────
+REF_FORGET_STD = [4.3, 0.3, 0.7, 1.8, 4.0, 1.8, 0.9, 2.7, 1.1, 0.0]
+
+# ── T2 significance flags (two-sided paired t-test on per-seed deltas) ─
+# Expected flags per plan table_plan.md T2 / report Section 5:
+#   sig: p < 0.05 | marginal: p < 0.10 | n.s.: else
+SIG_FLAGS: Dict[str, Tuple[str, str]] = {
+    "a1_no_kd":       ("n.s.", "sig"),
+    "a2_head_eval":   ("sig", "sig"),
+    "a3_linear_head": ("marginal", "n.s."),
+    "a4_random_bank": ("sig", "sig"),
+}
+
+
+def verify_master(runs: Dict[str, RunResult]) -> None:
+    for key, (ea, esa, ef, esf, eb, esb) in MASTER.items():
+        r = runs[key]
+        check(f"2.1 {key} avg_acc", close(r.avg_acc, ea, 5e-5), f"{r.avg_acc:.6f}")
+        check(f"2.1 {key} avg_acc_std", close(r.avg_acc_std, esa, 5e-5), f"{r.avg_acc_std:.6f}")
+        check(f"2.1 {key} forgetting", close(r.forgetting, ef, 5e-5), f"{r.forgetting:.6f}")
+        check(f"2.1 {key} forgetting_std", close(r.forgetting_std, esf, 5e-5), f"{r.forgetting_std:.6f}")
+        check(f"2.1 {key} bwt", close(r.bwt, eb, 5e-5), f"{r.bwt:.6f}")
+        check(f"2.1 {key} bwt_std", close(r.bwt_std, esb, 5e-5), f"{r.bwt_std:.6f}")
+    # aggregation consistency: bwt == -mean of per-seed? (check mean over seeds)
+    for key in C.MASTER_ORDER:
+        r = runs[key]
+        mean_seed_bwt = float(np.mean(list(r.per_seed_bwt().values())))
+        check(f"2.1 {key} bwt==mean(per-seed bwt)",
+              close(mean_seed_bwt, r.bwt, 1e-4), f"seeds {mean_seed_bwt:.6f}")
+
+
+def verify_per_task(runs: Dict[str, RunResult]) -> None:
+    for key, exp in PER_TASK_ACC.items():
+        got = runs[key].final_task_accs()
+        check(f"2.3 {key} per-task acc", close_arr(got, exp, 0.05),
+              f"t1={got[1]:.1f} t9={got[9]:.1f}")
+    for key, exp in PER_TASK_FORGET.items():
+        got = runs[key].per_task_forgetting()
+        check(f"2.4 {key} per-task forgetting", close_arr(got, exp, 0.05),
+              f"t1={got[1]:.1f} t9={got[9]:.1f}")
+    # t9 == 0.0 by construction
+    for key in C.MASTER_ORDER:
+        got = runs[key].per_task_forgetting()
+        check(f"2.4 {key} t9=0", close(got[9], 0.0, 1e-9), f"{got[9]:.4f}")
+    # a2 correction guard: T1 = 50.6, NOT 42.1 (regression guard)
+    a2 = runs["a2_head_eval"].per_task_forgetting()
+    check("3 a2 T1 == 50.6 (corrected)", close(a2[1], 50.6, 0.05), f"{a2[1]:.2f}")
+    check("3 a2 plateau T0-T6 >= 47", all(47.0 <= v <= 55.5 for v in a2[:7]),
+          f"{[round(v,1) for v in a2[:7]]}")
+
+
+def verify_deltas(runs: Dict[str, RunResult]) -> None:
+    deltas = matched_deltas(runs, C.reference_key())
+    for key, (e_acc, e_for) in MATCHED_DELTAS.items():
+        acc = float(np.mean(list(deltas[key]["avg_acc"].values()))) * 100.0
+        for_ = float(np.mean(list(deltas[key]["forgetting"].values()))) * 100.0
+        check(f"2.2 {key} delta acc", close(acc, e_acc, 1e-4), f"{acc:.6f}")
+        check(f"2.2 {key} delta forgetting", close(for_, e_for, 1e-4), f"{for_:.6f}")
+
+
+def verify_banks(runs: Dict[str, RunResult]) -> None:
+    for budget, expected in BANK_SIZES.items():
+        key = {500: "s1_budget500", 2000: "uniform_herding", 4000: "s2_budget4000"}[budget]
+        r = runs[key]
+        got = []
+        for t in range(C.NUM_TASKS):
+            lo, hi = r.bank_quota_range(t)
+            got.append((lo, hi))
+            exp = expected[t]
+            if (lo, hi) != exp:
+                check(f"A6 budget {budget} t{t}", False, f"got {(lo, hi)} expected {exp}")
+        check(f"A6 budget {budget} all tasks", got == expected, str(got))
+    # identical across seeds for the same budget
+    for key in ["s1_budget500", "uniform_herding", "s2_budget4000"]:
+        r = runs[key]
+        raw = {s: r.bank_sizes[s] for s in r.bank_sizes}
+        same = all(raw[s] == raw[list(raw)[0]] for s in raw)
+        check(f"A6 {key} seed-invariant", same)
+
+
+def verify_meta(runs: Dict[str, RunResult]) -> None:
+    for key in C.MASTER_ORDER:
+        r = runs[key]
+        check(f"A5 {key} wall_time", close(r.wall_time_s, WALL_TIMES[key], 0.15),
+              f"{r.wall_time_s:.2f}")
+        check(f"A5 {key} per-seed walls present", len(r.per_seed_wall_times()) == 3)
+        check(f"A1 {key} epochs==71", close(r.epochs_per_task(), 71.0, 1e-9),
+              f"{r.epochs_per_task():g}")
+        check(f"A1 {key} device present", bool(r.meta.get("device")))
+        check(f"A1 {key} git_commit present", bool(r.meta.get("git_commit")))
+    ref = runs[C.reference_key()]
+    check("A3 ref forgetting std", close_arr(ref.per_task_forgetting_std(), REF_FORGET_STD, 0.05),
+          str([round(v, 1) for v in ref.per_task_forgetting_std()]))
+    # A4: per-seed means match aggregated
+    for key in C.MASTER_ORDER:
+        r = runs[key]
+        mean_seed = float(np.mean(list(r.per_seed_avg_accs().values())))
+        check(f"A4 {key} mean(seed acc)==agg", close(mean_seed, r.avg_acc, 1e-6),
+              f"{mean_seed:.6f}")
+
+
+def verify_significance(runs: Dict[str, RunResult]) -> None:
+    print("  (Table 2 significance — two-sided paired t-test, per-seed deltas vs 0)")
+    deltas = matched_deltas(runs, C.reference_key())
+    for key in [k for k in C.COMPONENT_KEYS if k != C.reference_key()]:
+        acc = list(deltas[key]["avg_acc"].values())
+        for_ = list(deltas[key]["forgetting"].values())
+        p_acc = float(stats.ttest_1samp(acc, 0.0).pvalue)
+        p_for = float(stats.ttest_1samp(for_, 0.0).pvalue)
+        flag = lambda p: "sig" if p < 0.05 else ("marginal" if p < 0.10 else "n.s.")
+        f_acc, f_for = flag(p_acc), flag(p_for)
+        check(f"T2 {key} sig flags valid", f_acc in {"sig", "marginal", "n.s."}
+              and f_for in {"sig", "marginal", "n.s."},
+              f"p_acc={p_acc:.4f} ({f_acc}), p_for={p_for:.4f} ({f_for})")
+        exp_acc, exp_for = SIG_FLAGS[key]
+        check(f"T2 {key} sig matches plan",
+              f_acc == exp_acc and f_for == exp_for,
+              f"computed ({f_acc}/{f_for}) vs plan ({exp_acc}/{exp_for}) "
+              f"p_acc={p_acc:.4f} p_for={p_for:.4f}")
+
+
+def verify_artifacts(out_dir: Path) -> None:
+    expected = []
+    expected += [out_dir / C.PAPER_MAIN_FIGURES_DIR / f"{n}.png" for n in C.PAPER_MAIN_FIGURES]
+    expected += [out_dir / C.PAPER_MAIN_FIGURES_DIR / f"{n}.pdf" for n in C.PAPER_MAIN_FIGURES]
+    expected += [out_dir / C.PAPER_APPENDIX_FIGURES_DIR / f"{n}.png" for n in C.PAPER_APPENDIX_FIGURES]
+    expected += [out_dir / C.PAPER_APPENDIX_FIGURES_DIR / f"{n}.pdf" for n in C.PAPER_APPENDIX_FIGURES]
+    for t in C.PAPER_TABLES:
+        expected += [out_dir / C.PAPER_TABLES_DIR / f"{t}.tex", out_dir / C.PAPER_TABLES_DIR / f"{t}.md"]
+    for p in expected:
+        check(f"artifact {p.name}", p.exists() and p.stat().st_size > 0, str(p.relative_to(out_dir)))
+    check("artifact count", len(expected) == 9 * 2 + 18,
+          f"expected 36 files (9 figures x 2 formats + 18 tables), got {len(expected)}")
+
+
+def verify_registry() -> None:
+    check("registry main complete",
+          set(main_figures.BUILDERS) == set(C.PAPER_MAIN_FIGURES))
+    check("registry appendix complete",
+          set(appendix_figures.BUILDERS) == set(C.PAPER_APPENDIX_FIGURES))
+    check("registry tables complete",
+          set(tables.BUILDERS) == set(C.PAPER_TABLES))
+
+
+def main() -> None:
+    cfg = get_config()
+    out_dir = get_output_root(cfg)
+    runs = load_all_runs()
+    missing = [k for k in C.MASTER_ORDER if k not in runs]
+    if missing:
+        print(f"[FATAL] missing runs: {missing}")
+        sys.exit(1)
+
+    print("=" * 72)
+    print("PAPER ARTIFACT VERIFICATION (independent re-derivation)")
+    print("=" * 72)
+    verify_registry()
+    verify_master(runs)
+    verify_per_task(runs)
+    verify_deltas(runs)
+    verify_banks(runs)
+    verify_meta(runs)
+    verify_significance(runs)
+    verify_artifacts(out_dir)
+    print("=" * 72)
+    print(f"Checks: {CHECKS} | Failures: {len(FAILURES)}")
+    if FAILURES:
+        print("FAILED CHECKS:")
+        for f in FAILURES:
+            print(f"  - {f}")
+        sys.exit(1)
+    print("ALL CHECKS PASSED")
+    print("=" * 72)
+
+
+if __name__ == "__main__":
+    main()

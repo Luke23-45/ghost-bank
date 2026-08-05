@@ -28,14 +28,16 @@ All averages are mean over the 3 seeds; `+-` is population std over seeds. Per-s
 | B1 | iCaRL (baseline) | 0.4236 +- 0.0087 | 0.1946 +- 0.0010 | -0.1946 |
 | B2 | Static bank (baseline) | 0.2860 +- 0.0135 | 0.5586 +- 0.0142 | -0.5586 |
 | B3 | **Uniform herding (reference)** | **0.4499 +- 0.0100** | **0.1385 +- 0.0044** | -0.1354 |
-| a1 | Reference minus KD (`kd_weight=0.0`) | 0.4479 +- 0.0031 | 0.2478 +- 0.0081 | — |
-| a2 | Reference with head-logit eval (`predict_mode=head`) | 0.3461 +- 0.0113 | 0.4636 +- 0.0163 | — |
-| a3 | Reference with linear head (`head=linear`) | 0.4357 +- 0.0047 | 0.1468 +- 0.0048 | — |
-| a4 | Reference with random selection (`bank.selection=random`) | 0.4017 +- 0.0017 | 0.1835 +- 0.0061 | — |
-| s1 | Memory budget 500 | 0.3683 +- 0.0036 | 0.1963 +- 0.0101 | — |
-| s2 | Memory budget 4000 | 0.4766 +- 0.0072 | 0.1267 +- 0.0103 | — |
-| s3 | Retrieval budget 32 | 0.4328 +- 0.0061 | 0.1498 +- 0.0099 | — |
-| s4 | Retrieval budget 128 | 0.4481 +- 0.0078 | 0.1466 +- 0.0075 | — |
+| a1 | Reference minus KD (`kd_weight=0.0`) | 0.4479 +- 0.0031 | 0.2478 +- 0.0081 | -0.2478 |
+| a2 | Reference with head-logit eval (`predict_mode=head`) | 0.3461 +- 0.0113 | 0.4636 +- 0.0163 | -0.4636 |
+| a3 | Reference with linear head (`head=linear`) | 0.4357 +- 0.0047 | 0.1468 +- 0.0048 | -0.1434 |
+| a4 | Reference with random selection (`bank.selection=random`) | 0.4017 +- 0.0017 | 0.1835 +- 0.0061 | -0.1775 |
+| s1 | Memory budget 500 | 0.3683 +- 0.0036 | 0.1963 +- 0.0101 | -0.1963 |
+| s2 | Memory budget 4000 | 0.4766 +- 0.0072 | 0.1267 +- 0.0103 | -0.1212 |
+| s3 | Retrieval budget 32 | 0.4328 +- 0.0061 | 0.1498 +- 0.0099 | -0.1467 |
+| s4 | Retrieval budget 128 | 0.4481 +- 0.0078 | 0.1466 +- 0.0075 | -0.1438 |
+
+*BWT for a1–s4 (previously "—"): from `backward_transfer_mean` (verified 2026-08-05 via the analysis data layer). Note BWT = −forgetting exactly for B1/B2/a1/a2/s1 (final accuracy below introduction accuracy on every task); for the remaining rows BWT differs slightly from −forgetting because some tasks retain gains (e.g. reference −0.1354 vs −0.1385).*
 
 Per-seed accuracies (for reference use):
 

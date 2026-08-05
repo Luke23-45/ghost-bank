@@ -1,3 +1,6 @@
+python -m src.scripts.generate_paper
+
+
 # Ghost Bank CIL Paper — Analysis Framework
 
 Generates all figures and tables for the CIFAR-100 class-incremental learning

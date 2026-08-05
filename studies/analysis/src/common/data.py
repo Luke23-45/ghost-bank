@@ -22,7 +22,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -44,6 +44,7 @@ class RunResult:
     accuracy_matrix: Optional[np.ndarray] = None                 # mean over seeds, nan lower-left
     accuracy_matrix_std: Optional[np.ndarray] = None
     seed_matrices: Dict[int, np.ndarray] = field(default_factory=dict)
+    bank_sizes: Dict[int, List[Dict[int, int]]] = field(default_factory=dict)
 
     # ── Convenience accessors ────────────────────────────────────────
     @property
@@ -67,8 +68,16 @@ class RunResult:
         return float(self.final["aggregated"]["test/backward_transfer_mean"])
 
     @property
+    def bwt_std(self) -> float:
+        return float(self.final["aggregated"]["test/backward_transfer_std"])
+
+    @property
     def wall_time_s(self) -> float:
         return float(self.final["aggregated"]["wall_time_s_mean"])
+
+    @property
+    def wall_time_s_std(self) -> float:
+        return float(self.final["aggregated"]["wall_time_s_std"])
 
     @property
     def method(self) -> str:
@@ -98,6 +107,29 @@ class RunResult:
             int(s["seed"]): float(s["test/forgetting"])
             for s in self.final["per_seed_metrics"]
         }
+
+    def per_seed_bwt(self) -> Dict[int, float]:
+        return {
+            int(s["seed"]): float(s["test/backward_transfer"])
+            for s in self.final["per_seed_metrics"]
+        }
+
+    def per_seed_wall_times(self) -> Dict[int, float]:
+        return {
+            int(s["seed"]): float(s["wall_time_s"])
+            for s in self.final["per_seed_metrics"]
+        }
+
+    def epochs_per_task(self) -> float:
+        """Recorded training epochs per task (mean over seeds; must be uniform)."""
+        values = [
+            float(s[f"train/epochs_task_{t}"])
+            for t in range(C.NUM_TASKS)
+            for s in self.final["per_seed_metrics"]
+        ]
+        if len({round(v, 6) for v in values}) != 1:
+            raise ValueError(f"{self.key}: non-uniform recorded epochs {values}")
+        return values[0]
 
     def per_seed_final_task_accs(self, seed: int, use_percent: bool = True) -> np.ndarray:
         """Per-task final accuracies for one seed."""
@@ -134,6 +166,32 @@ class RunResult:
         m = self.accuracy_matrix
         arr = np.asarray([m[t, t] - m[-1, t] for t in range(C.NUM_TASKS)], dtype=float)
         return arr * 100.0 if use_percent else arr
+
+    def per_task_forgetting_std(self, use_percent: bool = True) -> np.ndarray:
+        """Per-task forgetting std (population, over the 3 seeds)."""
+        per_seed = np.vstack([
+            self._seed_per_task_forgetting(s) for s in sorted(self.seed_matrices)
+        ])
+        arr = per_seed.std(axis=0)
+        return arr if use_percent else arr / 100.0
+
+    def _seed_per_task_forgetting(self, seed: int, use_percent: bool = True) -> np.ndarray:
+        """Per-task forgetting for one seed (intro - final from its own matrix)."""
+        m = self.seed_matrices[seed]
+        arr = np.asarray([m[t, t] - m[-1, t] for t in range(C.NUM_TASKS)], dtype=float)
+        return arr * 100.0 if use_percent else arr
+
+    def bank_quota_range(self, task: int) -> Tuple[int, int]:
+        """(min, max) exemplar quota per class for one task, over all seeds."""
+        lo, hi = None, None
+        for s, tasks in self.bank_sizes.items():
+            quotas = list(tasks[task].values())
+            qmin, qmax = min(quotas), max(quotas)
+            lo = qmin if lo is None else min(lo, qmin)
+            hi = qmax if hi is None else max(hi, qmax)
+        if lo is None:
+            raise ValueError(f"{self.key}: no bank sizes for task {task}")
+        return int(lo), int(hi)
 
     def per_task_delta_vs(self, ref: "RunResult", use_percent: bool = True) -> np.ndarray:
         """Per-task final-accuracy delta vs a reference run (this minus ref)."""
@@ -244,6 +302,9 @@ def load_run(key: str, *, pattern_root: Optional[Path] = None) -> RunResult:
         m_path = metrics_dir / f"seed_{seed}_accuracy_matrix.csv"
         if m_path.exists():
             result.seed_matrices[seed] = _load_matrix(m_path)
+        b_path = metrics_dir / f"seed_{seed}_bank_sizes.json"
+        if b_path.exists():
+            result.bank_sizes[seed] = _load_json(b_path)
 
     return result
 

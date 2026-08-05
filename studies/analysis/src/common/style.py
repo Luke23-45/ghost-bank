@@ -93,9 +93,10 @@ THESIS_RC = {
     # Axes
     "axes.titlesize":       FONT_SIZE_TITLE,
     "axes.labelsize":       FONT_SIZE_LABEL,
+    "axes.labelcolor":      APPLE["ink"],
     "axes.titleweight":     "normal",
-    "axes.titlepad":        8,
-    "axes.labelpad":        5,
+    "axes.titlepad":        16,
+    "axes.labelpad":        8,
     "axes.linewidth":       0.8,
     "axes.edgecolor":       APPLE["ink"],
     "axes.facecolor":       "white",
@@ -143,9 +144,15 @@ THESIS_RC = {
     "figure.constrained_layout.use": True,
 
     # Saving
+    # NOTE: bbox_inches is intentionally NOT set to "tight": with
+    # constrained_layout enabled, the tight-bbox pass re-runs the layout
+    # solver at a degenerate size, emitting "constrained_layout not applied
+    # because axes sizes collapsed to zero" and inflating the exported
+    # canvas beyond the designed figsize (e.g. fig1 8.03" vs 6.5").
+    # constrained_layout already fits every artist inside the canvas, so
+    # exports are the exact designed dimensions (verified empirically).
     "savefig.dpi":          DPI,
-    "savefig.bbox":         "tight",
-    "savefig.pad_inches":   0.08,
+    "savefig.pad_inches":   0.18,
     "savefig.facecolor":    "white",
     "savefig.transparent":  False,
 
@@ -175,6 +182,7 @@ def create_figure(
     ncols: int = 1,
     height_override: Optional[float] = None,
     squeeze: bool = True,
+    **kwargs,
 ) -> Union[Tuple[plt.Figure, plt.Axes], Tuple[plt.Figure, np.ndarray]]:
     """Create a figure with paper-appropriate dimensions.
 
@@ -190,6 +198,8 @@ def create_figure(
         Explicit height in inches (overrides aspect).
     squeeze : bool
         Whether to squeeze singleton dimensions.
+    **kwargs
+        Additional arguments passed to plt.subplots().
     """
     if width == "full":
         w = FULL_WIDTH
@@ -204,6 +214,7 @@ def create_figure(
         figsize=(w, h),
         squeeze=squeeze,
         constrained_layout=True,
+        **kwargs
     )
     return fig, axes
 
@@ -214,6 +225,7 @@ def save_figure(
     formats: Sequence[str] = ("pdf", "png"),
     close: bool = True,
     dpi: int = DPI,
+    bbox_inches: Optional[str] = None,
 ) -> List[Path]:
     """Save a figure to the target formats and close it.
 
@@ -234,7 +246,10 @@ def save_figure(
     for fmt in formats:
         out_path = path.parent / f"{path.name}.{fmt}"
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(out_path), format=fmt, dpi=dpi)
+        if bbox_inches is not None:
+            fig.savefig(str(out_path), format=fmt, dpi=dpi,  bbox_inches="tight")
+        else:
+            fig.savefig(str(out_path), format=fmt, dpi=dpi)
         written.append(out_path)
         logger.debug("Saved figure: %s", out_path)
 
@@ -242,13 +257,3 @@ def save_figure(
         plt.close(fig)
     return written
 
-
-def finish_axes(ax: plt.Axes, *, grid_axis: str = "y") -> None:
-    """Apply the reference framework's axis finishing (spines, ticks, grid)."""
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color(APPLE["grid"])
-    ax.spines["bottom"].set_color(APPLE["grid"])
-    ax.tick_params(colors=APPLE["muted"], labelsize=FONT_SIZE_TICK)
-    ax.grid(True, axis=grid_axis, color=APPLE["grid"], linewidth=0.8, alpha=0.8)
-    ax.set_axisbelow(True)

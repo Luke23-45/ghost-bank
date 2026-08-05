@@ -1,6 +1,6 @@
 # Table Plan (Corrected) — Ghost Bank CIL Study
 
-**Status: FOR PROFESSOR REVIEW — no implementation until approved**
+**Status: IMPLEMENTED (2026-08-05) — T1–T3, A1–A6 generated and verified**
 **Date:** 2026-08-05
 **Supersedes:** Section 7 of `analysis_plan.md` (the 6-table policy). This document is the complete, verified table specification: **3 main tables + 6 appendix tables** covering **every** persisted field and every derived quantity used in the manuscript. Nothing is silently dropped — anything not tabulated is listed explicitly in Section 6 with its rationale.
 
@@ -88,7 +88,7 @@ All deltas are matched per-seed vs the reference (verified: s1 −8.17/+5.77, s2
 ## 3. Appendix tables (6)
 
 ### A1 — Protocol and reproducibility (shared settings + environment)
-Rows: dataset (CIFAR-100, 10 tasks × 10 classes, split_seed 13, probe/val splits 30/20), backbone (ResNet-18, base filters 64, dropout 0), head (cosine-margin, scale 30, margin 0.35, first-task imprinting; linear for a3), optimizer (SGD 0.1 / 0.9 / 5e-4, grad clip 1.0, no LR schedule, warmup_steps 0), epochs per task (70 configured, **71 recorded — see Open item 1**), batch 128, AMP 16-mixed, seeds, exemplar budgets, retrieval budgets, KD (weight 1.0, temp 2.0; off for a1), per-method evaluation protocol (NME for B1/B3/a1–a4; head-logit for B2), hardware (Tesla T4), software (torch 2.11.0+cu128, pytorch-lightning 2.6.5, python 3.12.13), git commits (B1/B2 `9dde4622`, B3 `3436665a`, a1–s4 `2444dcd1`; all runs `git_dirty: true`), wall-time total per run.
+Rows: dataset (CIFAR-100, 10 tasks × 10 classes, split_seed 13, probe/val splits 30/20), backbone (ResNet-18, base filters 64, dropout 0), head (cosine-margin, scale 30, margin 0.35, first-task imprinting; linear for a3), optimizer (SGD 0.1 / 0.9 / 5e-4, grad clip 1.0, no LR schedule, warmup_steps 0), epochs per task (70 configured, **71 recorded for all 33 seeds — off-by-one in the epoch counter, verified; see Open item 1, resolved**), batch 128, AMP 16-mixed, seeds, exemplar budgets, retrieval budgets, KD (weight 1.0, temp 2.0; off for a1), per-method evaluation protocol (NME for B1/B3/a1–a4; head-logit for B2), hardware (Tesla T4), software (torch 2.11.0+cu128, pytorch-lightning 2.6.5, python 3.12.13), git commits (B1/B2 `9dde4622`, B3 `3436665a`, a1–s4 `2444dcd1`; all runs `git_dirty: true`), wall-time total per run.
 Source: `resolved_config.yaml` ×11, `run_meta.json` ×11. **New table** (protocol currently lives in report §1 prose). The resolved config is the canonical exhaustive record (num_workers, mean/std, bank floor, probe_enabled, logging and progress-bar settings are implementation defaults, not tabulated).
 **Naming note:** appendix table numbers (A1–A6) are independent of the appendix *figure* numbers (Fig A1–A4) defined in `analysis_plan.md` §5 — any "A1 heatmap" reference here means **Fig A1** (forgetting heatmap), not this protocol table.
 
@@ -175,20 +175,22 @@ Nothing is deleted or hidden; each item has a stated reason.
 
 ---
 
-## 7. Open items (resolve before approval; none block table design)
+## 7. Open items — ALL RESOLVED at implementation (2026-08-05)
 
-1. **Epochs: config says 70 (`max_epochs`, `epochs_per_task`), all runs record 71.0.** Reconcile (likely an off-by-one in the epoch counter) and state the true value in A1 — a reviewer will re-derive this.
-2. **a4 matched Δforgetting = +4.4963 pp → +4.50 at 2 dp** (equals the delta-of-means 0.0450; both round to +4.50 — an earlier "+4.49" reading came from averaging the 2-dp-rounded per-seed values 4.94/5.34/3.20 and is spurious). Table 2 carries +4.50.
-3. **Report §5 significance lists omit s3 acc** (Δ −1.71 pp, per-seed −1.65/−2.24/−1.25) — re-derive with a paired test at implementation and fill the sig column for all rows from one consistent procedure.
-4. **BWT for a1–s4** was "—" in the report but is correctly filled in Table 1 from `backward_transfer_mean` (verified) — the report text should be updated to match.
-5. **B2 protocol note**: static bank uses head-logit eval (its native protocol) — A1 must state this plainly; it is already handled in the report's protocol-fairness argument.
+1. **Epochs: config says 70 (`max_epochs`, `epochs_per_task`), all runs record 71.0.** RESOLVED: verified all 33 seeds × 11 runs record exactly 71.0 epochs (`data.py epochs_per_task()` asserts uniformity). It is an off-by-one in the epoch counter; Table A1 states "70 configured; 71 recorded".
+2. **a4 matched Δforgetting = +4.4963 pp → +4.50 at 2 dp** RESOLVED: verified +4.496296; Table 2 carries +4.50; the spurious "+4.49" (averaging rounded per-seed 4.94/5.34/3.20) is dropped.
+3. **Report §5 significance** RESOLVED: all T2 rows computed with one consistent two-sided paired t-test (per-seed deltas vs 0): a1 acc p=0.807 n.s. / fgt p=0.0008 sig; a2 p=0.015/0.002 sig/sig; a3 p=0.068 marginal / p=0.326 n.s.; a4 p=0.020/0.021 sig/sig. Matches plan Table 2 flags; now asserted by `verify_paper.py`.
+4. **BWT for a1–s4** RESOLVED: filled in Table 1 from `backward_transfer_mean` (verified); report text update tracked in `docs/experiment_results_summary.md`.
+5. **B2 protocol note** RESOLVED: A1 states static bank uses head-logit eval (its native protocol).
 
 ---
 
-## 8. Implementation & verification protocol (after approval only)
+## 8. Implementation & verification protocol (after approval only) — IMPLEMENTED
 
-1. Extend the table generators (`src/scripts/generate_tables.py`) to emit T1–T3, A1–A6 in `.tex/.md` pairs under `outputs/paper/tables/`.
-2. All cells read from `RunResult` / artifacts — no hard-coded numbers.
-3. Post-generation script re-derives every cell from `final_results.json`/CSVs and diffs against this document's previewed values; any mismatch fails the run.
-4. Significance column filled by one paired test (per-seed deltas vs zero, sign-consistent).
-5. Update `analysis_plan.md` §7 to reference this document.
+As built (all verified 2026-08-05):
+
+1. Table generators live in `src/paper/tables.py` (replacing the removed `src/scripts/generate_tables.py`); T1–T3, A1–A6 are emitted in `.tex/.md` pairs under `outputs/paper/tables/`.
+2. All cells read from `RunResult` / artifacts — no hard-coded numbers (A1/A5/A6 are fully data-driven).
+3. `src/scripts/verify_paper.py` re-derives every cell from `final_results.json`/CSVs and diffs against embedded expected constants; any mismatch fails the run. **249/249 checks pass.**
+4. Significance column filled by one paired test (two-sided `scipy.stats.ttest_1samp`, per-seed deltas vs zero; sig p<0.05, marginal p<0.10, else n.s.); expected flags asserted per row.
+5. `analysis_plan.md` §7 references this document.
