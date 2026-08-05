@@ -19,24 +19,17 @@ import numpy as np
 from src.common import constants as C
 from src.common.data import RunResult
 from src.common.style import APPLE, PALETTE
+import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
 TASK_TICKS = list(range(C.NUM_TASKS))
 
-# Sequential colormap for evolution heatmaps (colorblind-safe, sky -> indigo)
-HEATMAP_CMAP = mcolors.LinearSegmentedColormap.from_list(
-    "ghost_bank_heat",
-    ["#FFFFFF", PALETTE["sky"], PALETTE["indigo"]],
-    N=256,
-)
+# Sequential colormap for evolution heatmaps (colorblind-safe, premium seaborn mako_r)
+HEATMAP_CMAP = sns.color_palette("mako_r", as_cmap=True)
 
-# Diverging colormap for forgetting (white -> rose -> wine; dark = catastrophic)
-FORGET_CMAP = mcolors.LinearSegmentedColormap.from_list(
-    "ghost_bank_forget",
-    ["#FFFFFF", PALETTE["rose"], PALETTE["wine"]],
-    N=256,
-)
+# Sequential colormap for forgetting (premium seaborn rocket_r; dark = catastrophic)
+FORGET_CMAP = sns.color_palette("rocket_r", as_cmap=True)
 
 # Sequential colormap for task-age coloring (old = sky, new = indigo)
 AGE_CMAP = mcolors.LinearSegmentedColormap.from_list(
@@ -155,9 +148,16 @@ def plot_evolution_heatmap(
                     j, i, f"{v:{fmt}}",
                     ha="center", va="center",
                     fontsize=8,
-                    color="white" if v > 0.5 * vmax else APPLE["ink"],
+                    color="#FFFFFF" if v > 0.5 * vmax else "#1A1A1A",
                 )
-    ax.set_xticks(TASK_TICKS, minor=False)
+    
+    # Remove major dashed grid and add clean white cell borders via minor grid
+    ax.grid(which="major", visible=False)
+    ax.set_xticks(np.arange(matrix.shape[1] + 1) - 0.5, minor=True)
+    ax.set_yticks(np.arange(matrix.shape[0] + 1) - 0.5, minor=True)
+    ax.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
+    ax.tick_params(which="minor", bottom=False, left=False)
+    
     return im
 
 
@@ -273,8 +273,18 @@ def plot_method_task_forgetting_heatmap(
         for j in range(matrix.shape[1]):
             v = matrix[i, j]
             ax.text(j, i, f"{v:.0f}", ha="center", va="center", fontsize=7.5,
-                    color=APPLE["ink"] if v < 30 else "white")
+                    color="#FFFFFF" if v >= 25 else "#1A1A1A")
+                    
+    # Remove major dashed grid and add clean white cell borders via minor grid
+    ax.grid(which="major", visible=False)
+    ax.set_xticks(np.arange(matrix.shape[1] + 1) - 0.5, minor=True)
+    ax.set_yticks(np.arange(matrix.shape[0] + 1) - 0.5, minor=True)
+    ax.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
+    ax.tick_params(which="minor", bottom=False, left=False)
+    
+    # Highlight reference row with bold typography instead of harsh black lines
     ref_row = keys.index(C.reference_key())
-    ax.axhline(ref_row - 0.5, color=APPLE["ink"], linewidth=1.6)
-    ax.axhline(ref_row + 0.5, color=APPLE["ink"], linewidth=1.6)
+    ax.get_yticklabels()[ref_row].set_weight("bold")
+    ax.get_yticklabels()[ref_row].set_color("#1A1A1A")
+    
     return im
