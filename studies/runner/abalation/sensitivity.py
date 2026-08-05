@@ -86,14 +86,24 @@ _AXES: dict[str, list[tuple[str, str | None]]] = {
 }
 
 
+_AGGREGATE_KEY: dict[str, str] = {ACC_KEY: "avg_acc", FORGET_KEY: "forgetting"}
+
+
 def _mean_by_label(
     outcomes: list[RunOutcome], ref_seeds: dict[int, dict[str, float]], key: str
 ) -> dict[str, float]:
+    """Per-label metric means.
+
+    ``aggregate_stats`` keys are ``avg_acc`` / ``forgetting`` while
+    ``ACC_KEY`` / ``FORGET_KEY`` are the raw dot-paths used inside the
+    per-seed metric dicts; map between the two namespaces here.
+    """
     values: dict[str, float] = {}
+    agg_key = _AGGREGATE_KEY[key]
     for outcome in outcomes:
         stats = aggregate_stats(outcome.aggregated)
         if stats:
-            values[outcome.row.label] = stats[key][0]
+            values[outcome.row.label] = stats[agg_key][0]
     if ref_seeds:
         ref_mean, _ = mean_std(
             [float(metrics[key]) for metrics in ref_seeds.values() if key in metrics]

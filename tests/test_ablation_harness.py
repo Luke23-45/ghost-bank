@@ -298,6 +298,44 @@ class TestReportMath:
         assert monotonic_violations([("a", None), ("b", 0.4)], higher_better=True) == []
 
 
+class TestSensitivityReport:
+    """extra_sections must run on real completed metrics, not just dry-runs."""
+
+    @staticmethod
+    def _outcome(label: str, acc: float) -> RunOutcome:
+        row = next(r for r in SENSITIVITY_ROWS if r.label == label)
+        return RunOutcome(
+            row,
+            status="RUN",
+            aggregated={
+                "test/avg_acc_mean": acc,
+                "test/avg_acc_std": 0.01,
+                "test/forgetting_mean": 0.14,
+                "test/forgetting_std": 0.01,
+            },
+            per_seed=[],
+        )
+
+    def test_single_completed_row_no_crash(self):
+        from studies.runner.abalation.sensitivity import extra_sections
+
+        sections = extra_sections([self._outcome("s3_retr32", 0.41)], {})
+        assert len(sections) == 2
+        retr = next(b for t, b in sections if "retrieval_budget" in t)
+        assert "| 32 | 0.4100 |" in retr
+
+    def test_monotonicity_flagged_on_real_metrics(self):
+        from studies.runner.abalation.sensitivity import extra_sections
+
+        sections = extra_sections(
+            [self._outcome("s1_budget500", 0.40), self._outcome("s2_budget4000", 0.35)],
+            {},
+        )
+        mem = next(b for t, b in sections if "memory_budget" in t)
+        assert "avg_acc not increasing" in mem
+        assert "500 -> 2000 (ref)" in mem or "500 -> 4000" in mem
+
+
 def test_csv_header_body_width_match():
     from studies.runner.abalation.shared.report import build_csv
 

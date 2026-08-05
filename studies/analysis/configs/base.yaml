@@ -1,0 +1,7 @@
+# Central configuration for the Ghost Bank CIL paper analysis.
+# Paths are resolved dynamically at runtime if set to null.
+
+paths:
+  project_root: null
+  data_root: null
+  output_root: "studies/analysis/outputs"
