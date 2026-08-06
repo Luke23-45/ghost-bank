@@ -41,7 +41,7 @@ def figA1_forgetting_heatmap(runs: Dict[str, RunResult], out_dir: Path) -> List[
             title="Per-task forgetting across all methods (pp)",
         )
         add_colorbar(fig, im, ax, label="Forgetting (pp)")
-        finish_axes(ax)
+        finish_axes(ax, heatmap=True)
         return save_figure(fig, out_dir / APPENDIX_OUT / "figA1_forgetting_heatmap")
 
 
@@ -53,9 +53,10 @@ def figA2_evolution_reference(runs: Dict[str, RunResult], out_dir: Path) -> List
         im = plot_evolution_heatmap(
             ax, runs[REF],
             title="Uniform herding (reference) — task evolution",
+            vmax=85,
         )
         add_colorbar(fig, im, ax)
-        finish_axes(ax)
+        finish_axes(ax, heatmap=True)
         return save_figure(fig, out_dir / APPENDIX_OUT / "figA2_evolution_reference")
 
 
@@ -67,9 +68,10 @@ def figA3_evolution_icarl(runs: Dict[str, RunResult], out_dir: Path) -> List[Pat
         im = plot_evolution_heatmap(
             ax, runs["icarl"],
             title="iCaRL — task evolution (steady diagonal erosion)",
+            vmax=85,
         )
         add_colorbar(fig, im, ax)
-        finish_axes(ax)
+        finish_axes(ax, heatmap=True)
         return save_figure(fig, out_dir / APPENDIX_OUT / "figA3_evolution_icarl")
 
 
@@ -83,9 +85,11 @@ def figA4_stability_slopes(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
             title="No-KD ablation (a1) — stability slopes",
             run_label=C.display_name("a1_no_kd"),
         )
-        ax.set_ylim(0, 80)
+        ax.set_ylim(0, 85)
         finish_axes(ax)
-        styled_legend(ax, loc="upper left", fontsize=8.5, ncol=2)
+        styled_legend(
+            ax, loc="lower center", fontsize=8.5, ncol=2,
+        )
         return save_figure(fig, out_dir / APPENDIX_OUT / "figA4_stability_slopes")
 
 

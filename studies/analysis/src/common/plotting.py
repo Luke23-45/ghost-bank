@@ -9,7 +9,7 @@ with the old per-experiment figure pipeline.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import matplotlib as mpl
 import matplotlib.colors as mcolors
@@ -25,11 +25,20 @@ logger = logging.getLogger(__name__)
 
 TASK_TICKS = list(range(C.NUM_TASKS))
 
-# Sequential colormap for evolution heatmaps (colorblind-safe, premium seaborn mako_r)
-HEATMAP_CMAP = sns.color_palette("mako_r", as_cmap=True)
+# ── Curated colormaps (no green/cyan tails) ──────────────────────────
+# Evolution heatmaps: cream → steel-blue → deep navy (no mako green tail)
+HEATMAP_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "ghost_bank_evo",
+    ["#F7F7F0", "#C6DBEF", "#6BAED6", "#2171B5", "#08306B"],
+    N=256,
+)
 
-# Sequential colormap for forgetting (premium seaborn rocket_r; dark = catastrophic)
-FORGET_CMAP = sns.color_palette("rocket_r", as_cmap=True)
+# Forgetting heatmap: warm cream → salmon → crimson → deep maroon
+FORGET_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "ghost_bank_forget",
+    ["#FFF5EB", "#FDD0A2", "#F16913", "#D62728", "#67000D"],
+    N=256,
+)
 
 # Sequential colormap for task-age coloring (old = sky, new = indigo)
 AGE_CMAP = mcolors.LinearSegmentedColormap.from_list(
@@ -37,6 +46,24 @@ AGE_CMAP = mcolors.LinearSegmentedColormap.from_list(
     [PALETTE["sky"], PALETTE["indigo"]],
     N=256,
 )
+
+
+# ── Luminance-based contrast (WCAG-grade) ────────────────────────────
+def _relative_luminance(hex_color: str) -> float:
+    """Compute relative luminance per WCAG 2.0 from a hex color."""
+    r, g, b = mcolors.to_rgb(hex_color)
+    def _lin(c: float) -> float:
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b)
+
+
+def _text_color_for_bg(cmap, norm_value: float, vmin: float = 0.0, vmax: float = 1.0, threshold: float = 0.40) -> str:
+    """Return white or dark text for maximum readability on a colormap cell."""
+    normed = (norm_value - vmin) / (vmax - vmin) if vmax != vmin else 0.5
+    rgba = cmap(np.clip(normed, 0.0, 1.0))
+    bg_hex = mcolors.to_hex(rgba[:3])
+    lum = _relative_luminance(bg_hex)
+    return "#FFFFFF" if lum < threshold else "#1A1A1A"
 
 
 def styled_legend(ax: plt.Axes, **kwargs) -> None:
@@ -48,16 +75,28 @@ def styled_legend(ax: plt.Axes, **kwargs) -> None:
     ax.legend(**kwargs)
 
 
-def finish_axes(ax: plt.Axes) -> None:
+def finish_axes(ax: plt.Axes, *, heatmap: bool = False) -> None:
     """Apply consistent spine, grid, and tick styling to an axes.
 
     Call on every axes in every figure to guarantee visual coherence
     across the entire paper (main + appendix).
+
+    Parameters
+    ----------
+    heatmap : bool
+        When True, skips the y-grid overlay and preserves all four spines
+        so that heatmap cell borders are not disrupted.
     """
-    ax.grid(True, axis="y", color=APPLE["grid"], linewidth=0.8, alpha=0.8)
-    ax.set_axisbelow(True)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    if not heatmap:
+        ax.grid(True, axis="y", color=APPLE["grid"], linewidth=0.5, alpha=0.6)
+        ax.set_axisbelow(True)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+    else:
+        # Heatmaps manage their own grid via minor ticks; just clean spines
+        ax.grid(which="major", visible=False)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
     ax.spines["left"].set_color(APPLE["grid"])
     ax.spines["bottom"].set_color(APPLE["grid"])
     ax.tick_params(colors=APPLE["grid"], labelcolor=APPLE["ink"])
@@ -113,19 +152,26 @@ def plot_evolution_heatmap(
     vmax: Optional[float] = None,
     fmt: str = ".0f",
     annotate: bool = True,
+    nan_fill: str = "#F0F0F2",
 ) -> mpl.image.AxesImage:
     """Heatmap of the lower-triangular task-accuracy evolution matrix.
 
     Row i = evaluation performed after training task i; column j = task j
-    accuracy at that point (percent).
+    accuracy at that point (percent).  NaN cells (upper triangle) are
+    filled with a soft neutral to avoid stark white gaps.
     """
     matrix = run.accuracy_matrix * 100.0 if run.accuracy_matrix is not None else None
     if matrix is None:
         raise ValueError(f"{run.key}: aggregated_accuracy_matrix.csv missing")
     vmax = vmax or float(np.nanmax(matrix))
+
+    # Use a copy with NaN masked so imshow leaves those cells transparent
+    cmap_copy = HEATMAP_CMAP.copy()
+    cmap_copy.set_bad(color=(0, 0, 0, 0))  # transparent for NaN
+    display = np.ma.masked_invalid(matrix)
     im = ax.imshow(
-        matrix,
-        cmap=HEATMAP_CMAP,
+        display,
+        cmap=cmap_copy,
         vmin=0.0,
         vmax=vmax,
         aspect="auto",
@@ -144,28 +190,37 @@ def plot_evolution_heatmap(
                 v = matrix[i, j]
                 if np.isnan(v):
                     continue
+                txt_color = "#FFFFFF"  # Force white text for premium contrast on blues
                 ax.text(
                     j, i, f"{v:{fmt}}",
                     ha="center", va="center",
-                    fontsize=8,
-                    color="#FFFFFF" if v > 0.5 * vmax else "#1A1A1A",
+                    fontsize=9, fontweight="medium",
+                    color=txt_color,
                 )
-    
-    # Remove major dashed grid and add clean white cell borders via minor grid
-    ax.grid(which="major", visible=False)
+
+    # Clean white cell separators
     ax.set_xticks(np.arange(matrix.shape[1] + 1) - 0.5, minor=True)
     ax.set_yticks(np.arange(matrix.shape[0] + 1) - 0.5, minor=True)
-    ax.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
+    ax.grid(which="minor", color="white", linestyle="-", linewidth=1.0)
     ax.tick_params(which="minor", bottom=False, left=False)
-    
+
     return im
 
 
-def add_colorbar(fig: plt.Figure, im: mpl.image.AxesImage, ax: plt.Axes, label: str = "Task accuracy (%)") -> None:
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label(label)
-    cbar.outline.set_visible(False)
-    cbar.ax.tick_params(colors=APPLE["muted"], labelsize=9)
+def add_colorbar(
+    fig: plt.Figure,
+    im: mpl.image.AxesImage,
+    ax: plt.Axes,
+    label: str = "Task accuracy (%)",
+    shrink: float = 0.92,
+) -> mpl.colorbar.Colorbar:
+    """Add a refined colorbar matched to the axes height."""
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, shrink=shrink)
+    cbar.set_label(label, fontsize=10)
+    cbar.outline.set_linewidth(0.4)
+    cbar.outline.set_edgecolor(APPLE["grid"])
+    cbar.ax.tick_params(colors=APPLE["muted"], labelsize=9, width=0.4)
+    return cbar
 
 
 # ── Stability slope chart (introduction -> final) ────────────────────
@@ -183,27 +238,58 @@ def plot_stability_slopes(
     Each task contributes a left dot (fresh accuracy) and a right dot (final
     accuracy); the connecting line's slope is that task's forgetting. The
     reference is drawn light underneath so the comparison reads instantly.
+
+    Markers: ● circle = at introduction, ▼ triangle-down = final state.
+    This visual encoding makes the forgetting direction immediately obvious.
     """
     xs = np.asarray(TASK_TICKS, dtype=float)
     ref_intro, ref_final = ref.intro_accs(), ref.final_task_accs()
     run_intro, run_final = run.intro_accs(), run.final_task_accs()
 
-    for j, x in enumerate(xs):
+    ref_color = C.color_for(ref.key)
+    run_color = C.color_for(run.key)
+
+    # ── Connecting slopes (T0..T8) ──
+    for j, x in enumerate(xs[:-1]):
         ax.plot(
             [x, x + 0.28], [ref_intro[j], ref_final[j]],
-            color=C.color_for(ref.key), alpha=0.35, linewidth=1.2, zorder=2,
+            color=ref_color, alpha=1.0, linewidth=1.2, zorder=1,
         )
         ax.plot(
-            [x + 0.34, x + 0.62], [run_intro[j], run_final[j]],
-            color=C.color_for(run.key), linewidth=1.6, zorder=3,
+            [x + 0.38, x + 0.66], [run_intro[j], run_final[j]],
+            color=run_color, linewidth=1.8, zorder=1,
         )
-    ax.scatter(xs, ref_intro, color=C.color_for(ref.key), s=26, alpha=0.5, zorder=4, label=f"{ref_label} — at introduction")
-    ax.scatter(xs + 0.28, ref_final, color=C.color_for(ref.key), s=26, alpha=0.5, zorder=4, label=f"{ref_label} — final")
-    ax.scatter(xs + 0.34, run_intro, color=C.color_for(run.key), s=42, zorder=5, label=f"{run_label} — at introduction")
-    ax.scatter(xs + 0.62, run_final, color=C.color_for(run.key), s=42, zorder=5, label=f"{run_label} — final")
-    ax.set_xticks(xs + 0.31)
+
+    # ── Reference markers (lighter, recedes) ──
+    ax.scatter(xs[:-1], ref_intro[:-1],
+              color=ref_color, marker="o", s=36, alpha=1.0, zorder=2,
+              edgecolors="white", linewidths=0.5,
+              label=f"{ref_label} — intro")
+    ax.scatter(xs[:-1] + 0.28, ref_final[:-1],
+              color=ref_color, marker="v", s=36, alpha=1.0, zorder=2,
+              edgecolors="white", linewidths=0.5,
+              label=f"{ref_label} — final")
+
+    # ── Ablation markers (prominent) ──
+    ax.scatter(xs[:-1] + 0.38, run_intro[:-1],
+              color=run_color, marker="o", s=52, zorder=2,
+              edgecolors="white", linewidths=0.6,
+              label=f"{run_label} — intro")
+    ax.scatter(xs[:-1] + 0.66, run_final[:-1],
+              color=run_color, marker="v", s=52, zorder=2,
+              edgecolors="white", linewidths=0.6,
+              label=f"{run_label} — final")
+
+    # ── T9 Single Evaluation Points ──
+    # For T9, intro == final. Plot a single centered marker per method to avoid zero-length dumbbells.
+    t9 = xs[-1]
+    ax.scatter([t9 + 0.14], [ref_intro[-1]], color=ref_color, marker="o", s=36, alpha=1.0, zorder=2, edgecolors="white", linewidths=0.5)
+    ax.scatter([t9 + 0.52], [run_intro[-1]], color=run_color, marker="o", s=52, zorder=2, edgecolors="white", linewidths=0.6)
+
+    ax.set_xticks(xs + 0.33)
     ax.set_xticklabels([f"T{t}" for t in TASK_TICKS])
-    ax.set_xlim(-0.5, len(xs) - 0.3)
+    ax.set_xlim(-0.4, len(xs) - 0.1)
+    ax.set_xlabel("Task")
     ax.set_ylabel("Task accuracy (%)")
     ax.set_title(title, loc="center")
     return None
@@ -261,8 +347,9 @@ def plot_method_task_forgetting_heatmap(
     Rows are methods (paper ordering), columns are tasks. The dark band
     across B2/a2 rows is the 'catastrophic retention' story at a glance.
     """
+    vmin_f, vmax_f = 0, 60
     matrix = np.vstack([runs[k].per_task_forgetting() for k in keys])
-    im = ax.imshow(matrix, cmap=FORGET_CMAP, vmin=0, vmax=60, aspect="auto")
+    im = ax.imshow(matrix, cmap=FORGET_CMAP, vmin=vmin_f, vmax=vmax_f, aspect="auto")
     ax.set_yticks(np.arange(len(keys)))
     ax.set_yticklabels([C.display_name(k) for k in keys], fontsize=9)
     ax.set_xticks(TASK_TICKS)
@@ -272,19 +359,19 @@ def plot_method_task_forgetting_heatmap(
     for i in range(matrix.shape[0]):
         for j in range(matrix.shape[1]):
             v = matrix[i, j]
-            ax.text(j, i, f"{v:.0f}", ha="center", va="center", fontsize=7.5,
-                    color="#FFFFFF" if v >= 25 else "#1A1A1A")
-                    
-    # Remove major dashed grid and add clean white cell borders via minor grid
-    ax.grid(which="major", visible=False)
+            txt_color = _text_color_for_bg(FORGET_CMAP, v, vmin=vmin_f, vmax=vmax_f, threshold=0.18)
+            ax.text(j, i, f"{v:.0f}", ha="center", va="center",
+                    fontsize=9, fontweight="medium", color=txt_color)
+
+    # Clean white cell separators
     ax.set_xticks(np.arange(matrix.shape[1] + 1) - 0.5, minor=True)
     ax.set_yticks(np.arange(matrix.shape[0] + 1) - 0.5, minor=True)
-    ax.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
+    ax.grid(which="minor", color="white", linestyle="-", linewidth=1.0)
     ax.tick_params(which="minor", bottom=False, left=False)
-    
-    # Highlight reference row with bold typography instead of harsh black lines
+
+    # Highlight reference row with bold typography
     ref_row = keys.index(C.reference_key())
     ax.get_yticklabels()[ref_row].set_weight("bold")
     ax.get_yticklabels()[ref_row].set_color("#1A1A1A")
-    
+
     return im

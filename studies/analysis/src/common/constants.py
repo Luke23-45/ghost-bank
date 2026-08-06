@@ -103,7 +103,7 @@ COLORS: Dict[str, str] = {
     "icarl":           SERIES_COLORS[3],   # rose
     "static_bank":     "#007AFF",          # Apple blue (darker than sky for contrast)
     "uniform_herding": SERIES_COLORS[0],   # indigo (reference; always emphasized)
-    "a1_no_kd":        SERIES_COLORS[4],   # olive
+    "a1_no_kd":        "#E8912D",          # warm amber (replaces olive for contrast)
     "a2_head_eval":    SERIES_COLORS[5],   # wine
     "a3_linear_head":  SERIES_COLORS[7],   # purple
     "a4_random_bank":  SERIES_COLORS[8],   # pink

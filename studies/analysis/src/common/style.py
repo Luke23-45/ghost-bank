@@ -110,7 +110,7 @@ THESIS_RC = {
     "grid.color":           APPLE["grid"],
     "grid.linewidth":       0.4,
     "grid.alpha":           0.7,
-    "grid.linestyle":       "--",
+    "grid.linestyle":       "-",
 
     # Ticks
     "xtick.labelsize":      FONT_SIZE_TICK,
