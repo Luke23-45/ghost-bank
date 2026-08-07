@@ -122,7 +122,7 @@ The logits are
 \[
 z_j(x; y) =
 \begin{cases}
-s \langle \bar{f}(x), \bar{w}_j \rangle - m, & j = y, \\
+s \left( \langle \bar{f}(x), \bar{w}_j \rangle - m \right), & j = y, \\
 s \langle \bar{f}(x), \bar{w}_j \rangle, & j \ne y.
 \end{cases}
 \]
