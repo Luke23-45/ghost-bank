@@ -1,0 +1,26 @@
+\documentclass{article}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{geometry}
+\geometry{margin=1in}
+\begin{document}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Per-class exemplar quota per task at each budget (quota = budget divided by classes seen, floor rounding causes the +/-1 pairs; identical across seeds).}
+  \label{tab:A6_bank_sizes}
+  \begin{tabular}{lrrrrrrrrrr}
+    \toprule
+    \textbf{Budget} & \textbf{t0} & \textbf{t1} & \textbf{t2} & \textbf{t3} & \textbf{t4} & \textbf{t5} & \textbf{t6} & \textbf{t7} & \textbf{t8} & \textbf{t9} \\
+    \midrule
+    500 & 50 & 25 & 16-17 & 12-13 & 10 & 8-9 & 7-8 & 6-7 & 5-6 & 5 \\
+    2000 & 200 & 100 & 66-67 & 50 & 40 & 33-34 & 28-29 & 25 & 22-23 & 20 \\
+    4000 & 400 & 200 & 133-134 & 100 & 80 & 66-67 & 57-58 & 50 & 44-45 & 40 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+
+\end{document}

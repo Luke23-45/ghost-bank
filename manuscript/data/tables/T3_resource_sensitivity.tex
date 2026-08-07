@@ -1,0 +1,29 @@
+\documentclass{article}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{geometry}
+\geometry{margin=1in}
+\begin{document}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Resource sensitivity on CIFAR-100 (mean $\pm$ std over 3 seeds; deltas are matched per-seed against the reference run at 2000 exemplars / 64 retrieval).}
+  \label{tab:T3_resource_sensitivity}
+  \begin{tabular}{lrrrrrrr}
+    \toprule
+    \textbf{\#} & \textbf{Experiment} & \textbf{Axis} & \textbf{Value} & \textbf{avg\_acc (\%)} & \textbf{forgetting (\%)} & \textbf{Δ acc (pp)} & \textbf{Δ forgetting (pp)} \\
+    \midrule
+    s1 & Memory 500 & Memory & 500 & 36.83 $\pm$ 0.36 & 19.63 $\pm$ 1.01 & -8.17 & +5.77 \\
+    B3 & Uniform herding (Reference) & Memory & 2000 & 44.99 $\pm$ 1.00 & 13.85 $\pm$ 0.44 & 0 & 0 \\
+    s2 & Memory 4000 & Memory & 4000 & 47.66 $\pm$ 0.72 & 12.67 $\pm$ 1.03 & +2.66 & -1.18 \\
+    s3 & Retrieval 32 & Retrieval & 32 & 43.28 $\pm$ 0.61 & 14.98 $\pm$ 0.99 & -1.71 & +1.13 \\
+    B3 & Uniform herding (Reference) & Retrieval & 64 & 44.99 $\pm$ 1.00 & 13.85 $\pm$ 0.44 & 0 & 0 \\
+    s4 & Retrieval 128 & Retrieval & 128 & 44.81 $\pm$ 0.78 & 14.66 $\pm$ 0.75 & -0.18 & +0.81 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+
+\end{document}

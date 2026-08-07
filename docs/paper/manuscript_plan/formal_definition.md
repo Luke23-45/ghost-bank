@@ -38,14 +38,16 @@ Throughout, \(\bar{u} = u / \|u\|_2\) denotes \(\ell_2\)-normalization.
 ## 3. Fixed-Total Allocation
 
 At the end of task \(t\), the memory budget \(M\) is distributed uniformly over
-the \(C_t\) classes seen so far. To make the allocation deterministic, order the
-classes in \(\mathcal{C}_t\) by first appearance and write
-\(\mathcal{C}_t = \{c_1, \dots, c_{C_t}\}\). Then
+the \(C_t\) classes seen so far. The implementation uses contiguous internal
+class identifiers in order of their appearance in the class-incremental stream;
+therefore, write \(\mathcal{C}_t = \{c_0, \dots, c_{C_t-1}\}\) in that canonical
+order. The allocation is
 \[
 q_{c_i}^{(t)} = \left\lfloor \frac{M}{C_t} \right\rfloor
-+ \mathbf{1}\{i \le M \bmod C_t\}, \qquad i = 1, \dots, C_t.
++ \mathbf{1}\{i < M \bmod C_t\}, \qquad i = 0, \dots, C_t-1.
 \]
-This gives \(q_{c_i}^{(t)} \in \{\lfloor M / C_t \rfloor, \lceil M / C_t \rceil\}\)
+The remainder is assigned to the lowest internal class identifiers. This gives
+\(q_{c_i}^{(t)} \in \{\lfloor M / C_t \rfloor, \lceil M / C_t \rceil\}\)
 and
 \[
 \sum_{c \in \mathcal{C}_t} q_c^{(t)} = M.
@@ -105,10 +107,12 @@ Let
 \mathcal{E}^{(t-1)} = \bigcup_{c \in \mathcal{C}_{t-1}} \mathcal{E}_c^{(t-1)}
 \]
 denote the union of exemplars available before task \(t\). During training on
-task \(t\), each minibatch from the current task is augmented with \(b\)
+task \(t \ge 1\), each minibatch from the current task is augmented with \(b\)
 exemplars drawn uniformly at random with replacement from \(\mathcal{E}^{(t-1)}\).
-The retrieved samples are re-augmented before being concatenated to the current
-minibatch.
+The sampling is uniform over the stored exemplar items, not uniform over
+classes. The retrieved samples are re-augmented before being concatenated to the
+current minibatch. Task \(0\) has no previous exemplar set and therefore uses
+only its current-task minibatches.
 
 The classifier uses cosine-margin logits. Let \(w_j\) be the classifier weight
 for class \(j\), \(s > 0\) the scale, and \(m > 0\) the additive margin. For an
@@ -132,9 +136,9 @@ For task \(t\), the training loss is
 \mathcal{L}_t(x,y) = \mathcal{L}_{\mathrm{CE}}(z(x; y), y)
 + \mathbf{1}\{t \ge 1\}\,\lambda T^2\,
 \mathrm{KL}\!\left(
-\operatorname{softmax}\!\left(\frac{z^{\mathrm{teach}}_{1:C_{t-1}}(x)}{T}\right)
+\operatorname{softmax}\!\left(\frac{z^{\mathrm{teach}}_{0:C_{t-1}-1}(x)}{T}\right)
 \bigg\|
-\operatorname{softmax}\!\left(\frac{z_{1:C_{t-1}}(x)}{T}\right)
+\operatorname{softmax}\!\left(\frac{z_{0:C_{t-1}-1}(x)}{T}\right)
 \right),
 \]
 where \(z^{\mathrm{teach}}(x)\) is the frozen teacher logit vector captured
@@ -162,17 +166,17 @@ the reference evaluation rule.
 
 ## 8. Reference Configuration
 
-The experimental configuration used throughout the manuscript is:
+The locked reference configuration used for the manuscript is:
 
 | Component | Value |
 |---|---|
 | Dataset | CIFAR-100, 10 tasks x 10 classes |
 | Backbone | ResNet-18, base filters 64, \(d = 512\) |
 | Training | SGD with learning rate 0.1, momentum 0.9, weight decay 5e-4, batch size 128, 70 epochs per task, AMP fp16 |
-| Head | Cosine-margin, \(s = 30\), \(m = 0.35\), imprinting enabled |
+| Head | Cosine-margin, \(s = 30\), \(m = 0.35\), imprinting enabled; explicit reference override \(\texttt{model.head=cosine\_margin}\) |
 | Memory | \(M = 2000\), floor quota \(= 1\) |
 | Retrieval | \(b = 64\), uniform sampling with replacement from the exemplar set |
-| Distillation | \(\lambda = 1.0\), \(T = 2.0\) |
+| Distillation | \(\lambda = 1.0\), \(T = 2.0\); explicit reference override \(\texttt{method.kd\_weight=1.0}\) |
 | Prediction | NME on \(\ell_2\)-normalized features and exemplar means |
 
 This definition is the mathematical contract for the reference method used in
