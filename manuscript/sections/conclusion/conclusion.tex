@@ -1,0 +1,19 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+This study examined how replay-system choices interact under a fixed-total
+exemplar budget for CIFAR-100 class-incremental learning.  Holding the protocol
+and resource budget fixed made it possible to separate exemplar selection,
+distillation, classifier head, and evaluation readout.  The matched ablations
+show that nearest-mean exemplar evaluation and herding are the largest measured
+contributors to the reference configuration's accuracy--forgetting trade-off.
+Distillation primarily improves retention, whereas the memory sweep has a
+larger effect than the tested changes in retrieval budget.
+
+For the measured setting, a defensible replay design is to allocate memory
+across all observed classes, rebuild representative exemplars in the current
+feature space, train with distillation, and evaluate with the corresponding NME
+prototypes.  This is a protocol-specific recommendation, not a general ranking
+of class-incremental methods.  The next empirical step is to test the same
+component-level analysis across class orders, datasets, architectures, and
+larger memory ranges.

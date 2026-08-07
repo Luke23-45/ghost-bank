@@ -1,0 +1,51 @@
+\documentclass[10pt]{article}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+
+\title{Disentangling Exemplar Replay in Class-Incremental Learning}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Replay-based class-incremental learning is specified by more than its memory
+budget: exemplar selection, distillation, classifier geometry, and the final
+readout can all affect retention.  We conduct a controlled study of these
+choices on CIFAR-100 with ten class-incremental tasks, a ResNet-18 backbone,
+and a fixed total exemplar budget.  Our reference rebuilds herded exemplars in
+the current feature space after every task, trains with replay and old-class
+distillation, and uses nearest-mean exemplar (NME) prediction.  At 2,000
+exemplars and retrieval budget 64, it obtains $44.99\pm1.00\%$ final average
+accuracy and $13.85\pm0.44\%$ forgetting.  Replacing NME with head-logit
+evaluation reduces average accuracy by $10.38$ percentage points and increases
+forgetting by $32.50$ points; replacing herding with random selection reduces
+accuracy by $4.83$ points.  Removing distillation leaves average accuracy nearly
+unchanged but increases forgetting by $10.93$ points.  Across the tested
+resources, reducing memory from 2,000 to 500 exemplars has a larger effect on
+accuracy than reducing retrieval from 64 to 32 samples.  These results identify
+the readout, exemplar selection, and total memory as the principal design
+choices in this protocol, while limiting the conclusion to the evaluated
+dataset, class order, backbone, and budget range.
+\end{abstract}
+
+\input{sections/introduction/introduction.tex}
+\input{sections/related_work/related_work.tex}
+\input{sections/method/method.tex}
+\input{sections/results/results.tex}
+\input{sections/discussion/discussion.tex}
+\input{sections/conclusion/conclusion.tex}
+
+\bibliographystyle{plain}
+\bibliography{bib/references}
+
+\clearpage
+\appendix
+\input{appendix/appendix.tex}
+
+\end{document}

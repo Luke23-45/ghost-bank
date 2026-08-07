@@ -1,0 +1,189 @@
+\section{Results}
+\label{sec:results}
+
+All results use the class-incremental protocol in Section~\ref{sec:method} and
+are reported as mean $\pm$ population standard deviation over three seeds.
+Table~\ref{tab:t1-master-results} compares methods at the common budget of
+2,000 exemplars and 64 replay samples per update.  Tables~\ref{tab:t2-component-ablations}
+and~\ref{tab:t3-resource-sensitivity} report matched per-seed deltas for the
+ablations and resource sweeps, respectively.
+
+\subsection{Main Comparison}
+\label{subsec:main-comparison}
+
+At the common budget, uniform herding obtains $44.99\pm1.00\%$ final average
+accuracy and $13.85\pm0.44\%$ forgetting.  Its mean accuracy is 2.63 percentage
+points (pp) above iCaRL and 16.39 pp above the static bank; its forgetting is
+5.61 pp and 42.01 pp lower, respectively.  The static bank has high accuracy on
+the final task ($75.2\pm3.7\%$) but substantially lower accuracy on the earlier
+tasks, which is consistent with its high aggregate forgetting.  Figure~\ref{fig:per-task-accuracy}
+shows the final per-task accuracies for the baselines and component variants.
+
+\begin{table}[t]
+  \centering
+  \caption{Main comparison on CIFAR-100 class-incremental learning. All methods
+  use 2,000 stored exemplars and retrieval budget 64.}
+  \label{tab:t1-master-results}
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lrrr}
+    \toprule
+    Method & Average accuracy (\%) & Forgetting (\%) & BWT (\%) \\
+    \midrule
+    iCaRL & $42.36\pm0.87$ & $19.46\pm0.10$ & $-19.46\pm0.10$ \\
+    Static bank & $28.60\pm1.35$ & $55.86\pm1.42$ & $-55.86\pm1.42$ \\
+    Uniform herding (reference) & $44.99\pm1.00$ & $13.85\pm0.44$ & $-13.54\pm0.39$ \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{data/main/figures/fig1_per_task_accuracy.pdf}
+  \caption{Final per-task accuracies. Panel (a) compares the baselines with the
+  reference. Panel (b) shows the component variants. Shaded bands denote the
+  population standard deviation over three seeds.}
+  \label{fig:per-task-accuracy}
+\end{figure}
+
+\subsection{Component Attribution}
+\label{subsec:component-attribution}
+
+The ablations separate the roles of distillation, readout, classifier head, and
+exemplar selection (Table~\ref{tab:t2-component-ablations}).  Removing KD changes
+mean accuracy by only $-0.21$ pp (not significant in the recorded paired test),
+but increases forgetting by $10.93$ pp (significant).  In this configuration,
+KD therefore affects retention more strongly than final average accuracy.
+
+Changing the evaluation rule from nearest-mean exemplars to head logits causes
+the largest observed degradation: $-10.38$ pp in average accuracy and $+32.50$
+pp in forgetting, both significant.  Replacing herding with random selection
+reduces average accuracy by $4.83$ pp and increases forgetting by $4.50$ pp,
+also with significant paired effects.  Replacing the cosine-margin head with a
+linear head gives a smaller $-1.42$ pp accuracy change (marginal) and a
+$+0.83$ pp forgetting change (not significant).  These comparisons isolate
+effects relative to the locked reference; they do not establish equivalence
+between components outside this protocol.
+
+\begin{table}[t]
+  \centering
+  \caption{Matched component ablations relative to the reference. Deltas are
+  paired by seed. ``Significant'' denotes a two-sided paired $t$-test against
+  zero with $p<0.05$; ``marginal'' denotes $p<0.1$.}
+  \label{tab:t2-component-ablations}
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{lrrrr}
+    \toprule
+    Variant & Average accuracy (\%) & Forgetting (\%) & $\Delta$ accuracy (pp) & $\Delta$ forgetting (pp) \\
+    \midrule
+    Without KD & $44.79\pm0.31$ & $24.78\pm0.81$ & $-0.21$ & $+10.93$ \\
+    Head-logit evaluation & $34.61\pm1.13$ & $46.36\pm1.63$ & $-10.38$ & $+32.50$ \\
+    Linear head & $43.57\pm0.47$ & $14.68\pm0.48$ & $-1.42$ & $+0.83$ \\
+    Random selection & $40.17\pm0.17$ & $18.35\pm0.61$ & $-4.83$ & $+4.50$ \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{data/main/figures/fig2_component_attribution.pdf}
+  \caption{Matched per-seed component deltas relative to the reference. Negative
+  accuracy deltas and positive forgetting deltas are unfavorable.}
+  \label{fig:component-attribution}
+\end{figure}
+
+\subsection{Resource Sensitivity}
+\label{subsec:resource-sensitivity}
+
+Memory budget has the larger effect in the tested range.  Reducing memory from
+2,000 to 500 exemplars lowers average accuracy by $8.17$ pp and raises
+forgetting by $5.77$ pp.  Increasing memory to 4,000 raises accuracy by $2.66$
+pp and lowers forgetting by $1.18$ pp.  The gain from 2,000 to 4,000 exemplars
+is smaller than the loss from 2,000 to 500, indicating diminishing changes over
+these three tested budgets rather than a saturation result.
+
+Changing the retrieval budget while keeping 2,000 exemplars has a smaller mean
+effect.  Reducing retrieval from 64 to 32 samples changes accuracy by $-1.71$
+pp and forgetting by $+1.13$ pp.  Increasing retrieval to 128 does not improve
+the mean metrics relative to 64 samples ($-0.18$ pp accuracy and $+0.81$ pp
+forgetting).  Figure~\ref{fig:resource-sensitivity} shows these trends and their
+seed variation.
+
+\begin{table}[t]
+  \centering
+  \caption{Resource sensitivity relative to the reference configuration
+  (2,000 exemplars and retrieval budget 64). Deltas are matched by seed.}
+  \label{tab:t3-resource-sensitivity}
+  \small
+  \resizebox{\linewidth}{!}{%
+  \begin{tabular}{llrrr}
+    \toprule
+    Axis & Value & Average accuracy (\%) & Forgetting (\%) & $\Delta$ accuracy / forgetting (pp) \\
+    \midrule
+    Memory & 500 & $36.83\pm0.36$ & $19.63\pm1.01$ & $-8.17$ / $+5.77$ \\
+    Memory & 2,000 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ / $0.00$ \\
+    Memory & 4,000 & $47.66\pm0.72$ & $12.67\pm1.03$ & $+2.66$ / $-1.18$ \\
+    Retrieval & 32 & $43.28\pm0.61$ & $14.98\pm0.99$ & $-1.71$ / $+1.13$ \\
+    Retrieval & 64 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ / $0.00$ \\
+    Retrieval & 128 & $44.81\pm0.78$ & $14.66\pm0.75$ & $-0.18$ / $+0.81$ \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{data/main/figures/fig3_resource_sensitivity.pdf}
+  \caption{Sensitivity to total exemplar memory and replay retrieval budget.
+  Error bars denote the population standard deviation over three seeds.}
+  \label{fig:resource-sensitivity}
+\end{figure}
+
+\subsection{Accuracy--Forgetting Trade-off}
+\label{subsec:accuracy-forgetting-tradeoff}
+
+Figure~\ref{fig:accuracy-forgetting} places all reported configurations in the
+accuracy--forgetting plane.  At the shared 2,000-exemplar budget, the reference
+has both the highest mean accuracy and the lowest mean forgetting among the
+three main methods.  The 4,000-exemplar configuration moves further toward the
+upper-left corner, whereas head-logit evaluation and the static bank occupy the
+lower-right region.  This plot is descriptive: configurations differ in either
+method component or resource budget, so it does not identify a single causal
+trade-off curve.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.92\linewidth]{data/main/figures/fig4_acc_forgetting_scatter.pdf}
+  \caption{Average accuracy versus forgetting for baselines, component
+  ablations, and resource configurations. Higher accuracy and lower forgetting
+  are preferred.}
+  \label{fig:accuracy-forgetting}
+\end{figure}
+
+\subsection{Task-Age Failure Modes}
+\label{subsec:task-age-failure-modes}
+
+Figure~\ref{fig:forgetting-by-age} exposes two contrasting failure modes.  The
+static bank incurs approximately $51$--$59$ pp forgetting for tasks 0--8, while
+head-logit evaluation incurs approximately $38$--$55$ pp over the same tasks.
+The reference ranges from $7.6$ to $26.8$ pp for these tasks.  In both adverse
+configurations, the most recently introduced task has much higher final
+accuracy than older tasks (Figure~\ref{fig:per-task-accuracy}), so their final
+average accuracy masks a strong recency bias.
+
+The zero forgetting value for task 9 is structural: no later training task can
+reduce its accuracy under the final-task definition of forgetting.  It should
+therefore not be interpreted as evidence that the last task is retained better
+than the preceding tasks.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{data/main/figures/fig5_forgetting_by_age.pdf}
+  \caption{Forgetting by task index for the reference and two adverse
+  configurations. The final task has zero forgetting by definition because no
+  subsequent task is learned.}
+  \label{fig:forgetting-by-age}
+\end{figure}

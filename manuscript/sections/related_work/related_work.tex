@@ -1,0 +1,71 @@
+\section{Related Work}
+\label{sec:related-work}
+
+\subsection{Class-Incremental Learning}
+\label{subsec:related-cil}
+
+Class-incremental learning has been approached through parameter
+regularization, constrained optimization, distillation, and replay.  Elastic
+Weight Consolidation and Synaptic Intelligence protect parameters estimated to
+be important for prior tasks~\cite{kirkpatrick2017ewc,zenke2017si}.  GEM and
+A-GEM instead constrain updates using episodic-memory gradients~\cite{lopezpaz2017gem,chaudhry2019agem}.
+Learning without Forgetting preserves old outputs by distillation without
+retaining old examples~\cite{li2016lwf}.  These approaches address different
+stability mechanisms.  Our study belongs to the replay-based setting and asks
+how choices inside a fixed-memory replay system affect the resulting
+accuracy--forgetting trade-off.
+
+\subsection{Replay and Exemplar Selection}
+\label{subsec:related-replay}
+
+Experience replay retains a bounded subset of prior data and interleaves it
+with new-task training~\cite{rolnick2019er,chaudhry2019tiny}.  iCaRL established
+an influential class-incremental exemplar template: select class exemplars by
+herding, replay them during training, and classify with nearest-mean
+exemplars~\cite{rebuffi2017icarl}.  The greedy herding rule is designed to
+approximate a class mean through selected samples~\cite{welling2009herding}.
+Subsequent work has also treated selection as an optimization problem, for
+example by maximizing gradient diversity in the memory or choosing retrieved
+samples that are expected to be most interfered with by an update~\cite{aljundi2019gss,aljundi2019mir}.
+
+Our reference shares iCaRL's fixed-total memory semantics and prototype
+readout, but rebuilds the selected exemplars for every observed class after
+each task using the current representation.  In contrast, iCaRL selects a
+class's exemplars when that class is introduced and subsequently shrinks that
+set as the class budget decreases.  The random-selection ablation therefore
+tests selection under the same budget, replay, and readout rather than
+comparing unrelated memory systems.
+
+\subsection{Distillation, Classifiers, and Readouts}
+\label{subsec:related-readout}
+
+Distillation is frequently paired with replay to preserve old responses.
+iCaRL uses output distillation together with exemplar replay and NME
+classification~\cite{rebuffi2017icarl}; our temperature-scaled KL objective is
+closer in form to the soft-target distillation used by Learning without
+Forgetting~\cite{li2016lwf}.  These are related design patterns, not identical
+losses.  In particular, iCaRL's original old-class distillation uses sigmoid
+binary cross-entropy rather than a temperature-scaled softmax KL term.
+
+Classifier design is another source of incremental bias and representation
+change.  LUCIR combines a normalized cosine classifier with a margin-based
+incremental objective~\cite{hou2019lucir}; BiC and Weight Aligning explicitly
+correct or align learned classifier outputs after incremental updates~\cite{wu2019bic,zhao2020wa}.
+Prototype-based classifiers provide a separate route: iCaRL predicts from
+exemplar means, while FeCAM uses class prototypes together with covariance
+structure~\cite{rebuffi2017icarl,goswami2023fecam}.  Our matched ablations keep
+the representation-learning protocol fixed while separating distillation,
+head geometry, exemplar selection, and the final NME versus head-logit
+readout.
+
+\subsection{Forgetting and Stability Metrics}
+\label{subsec:related-metrics}
+
+The accuracy matrix used in continual learning supports average accuracy and
+backward transfer, as formalized with GEM~\cite{lopezpaz2017gem}.  Average
+forgetting summarizes the decline of each old task from its best observed
+accuracy to its final accuracy~\cite{chaudhry2019tiny}.  We report all three
+quantities because final average accuracy alone can conceal a configuration
+that performs well on the most recent task while substantially degrading older
+ones.  Our contribution is not a new metric: it is a controlled component
+analysis using these established measurements.

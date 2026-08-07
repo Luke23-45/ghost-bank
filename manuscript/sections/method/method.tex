@@ -1,0 +1,174 @@
+\section{Method and Experimental Setup}
+\label{sec:method}
+
+We study class-incremental learning on CIFAR-100 under a fixed memory
+budget.  Training proceeds over tasks \(t=0,\ldots,T-1\).  Each task
+introduces a disjoint set of \(C_{\mathrm{new}}\) classes, and evaluation after
+task \(t\) is performed over the tasks seen so far without using task identity.
+In all main experiments, \(T=10\) and \(C_{\mathrm{new}}=10\).  The CIFAR-100
+classes are permuted with split seed 13 and then remapped to contiguous
+internal labels; task \(t\) contains internal classes
+\(\{tC_{\mathrm{new}},\ldots,(t+1)C_{\mathrm{new}}-1\}\).  From each training
+class, 30 images are held out for probing and 20 for validation; these held-out
+images are not inserted into replay memory.
+
+\subsection{Reference Model}
+\label{subsec:reference-model}
+
+The learner is a ResNet-18 feature extractor \(f_\theta:\mathcal{X}\to
+\mathbb{R}^{512}\) with base width 64 and no dropout.  The reference
+configuration trains with a cosine-margin classifier head.  For a feature
+vector \(f_\theta(x)\), classifier weights \(w_j\), scale \(s\), margin \(m\),
+and target \(y\), the logits are
+\[
+z_j(x;y)=
+\begin{cases}
+s\left\langle \bar f_\theta(x),\bar w_j\right\rangle - sm, & j=y,\\
+s\left\langle \bar f_\theta(x),\bar w_j\right\rangle, & j\neq y,
+\end{cases}
+\]
+where \(\bar u=u/\|u\|_2\).  We use \(s=30\) and \(m=0.35\).  When a new task is
+introduced, the classifier head is expanded by 10 rows.  For tasks after the
+first, the new rows are imprinted from the normalized class-mean features of
+the current task before optimization.
+
+Training uses SGD with learning rate 0.1, momentum 0.9, weight decay
+\(5\times10^{-4}\), batch size 128, gradient clipping at 1.0, mixed precision,
+and 70 configured epochs per task.  CIFAR training images are augmented with
+random crop with padding 4 and horizontal flip; evaluation uses normalization
+only.  The reported runs use seeds 1993, 2023, and 42.
+
+\subsection{Fixed-Total Herding Memory}
+\label{subsec:fixed-total-herding}
+
+The reference method maintains a fixed total exemplar budget \(M\), rather than
+a fixed per-class budget.  Let \(\mathcal{C}_t\) be the set of classes observed
+after task \(t\), with \(C_t=|\mathcal{C}_t|\).  After each task, the memory
+budget is divided over all seen classes:
+\[
+q_{c_i}^{(t)}
+=\left\lfloor\frac{M}{C_t}\right\rfloor
++
+\mathbf{1}\{i < M \bmod C_t\},
+\qquad i=0,\ldots,C_t-1,
+\]
+where \(c_i\) denotes the \(i\)-th internal class identifier.  Thus the selected
+sets sum exactly to \(M\), and every observed class has a positive quota in the
+reported budget range because \(M\ge C_t\) for every task.
+
+During task \(t\), each raw training example is inserted once into a class pool
+\(\mathcal{P}_c^{(t)}\).  The stored item is the unaugmented image and its
+internal label.  After training task \(t\), and before evaluation, the selected
+exemplar set is rebuilt in the current feature space.  For class \(c\), let
+\[
+\mu_c^{(t)}=\frac{1}{|\mathcal{P}_c^{(t)}|}
+\sum_{x\in\mathcal{P}_c^{(t)}} f_\theta(x)
+\]
+be the mean feature of the stored pool under the current network.  If
+\(q_c^{(t)}\ge |\mathcal{P}_c^{(t)}|\), all examples in the pool are selected.
+Otherwise, exemplars \(x_1,\ldots,x_q\), with \(q=q_c^{(t)}\), are chosen
+greedily.  With \(s_0=0\), the \(k\)-th exemplar is
+\[
+x_k \in
+\operatorname*{argmin}_{x\in\mathcal{P}_c^{(t)}\setminus\{x_1,\ldots,x_{k-1}\}}
+\left\|f_\theta(x)-\left(k\mu_c^{(t)}-s_{k-1}\right)\right\|_2^2,
+\qquad
+s_k=s_{k-1}+f_\theta(x_k).
+\]
+The prototype stored for nearest-mean classification is the mean feature of the
+selected exemplars,
+\[
+\hat\mu_c^{(t)}=\frac{1}{q}\sum_{k=1}^{q} f_\theta(x_k).
+\]
+Rebuilding is performed after every task, including task 0.  Consequently, old
+classes may receive different exemplars after the representation changes.
+
+\subsection{Replay and Distillation}
+\label{subsec:replay-distillation}
+
+For \(t=0\), training uses only the current task minibatches.  For \(t\ge1\),
+each current-task minibatch is augmented with \(b\) replay exemplars sampled
+with replacement from the selected memory of previous tasks.  Sampling is
+uniform over stored exemplar items, not uniform over classes.  Retrieved raw
+images are re-augmented before being concatenated with the current minibatch.
+The reference uses \(M=2000\) and \(b=64\).
+
+The optimization loss is cross-entropy on the expanded label space plus
+old-class distillation from a frozen teacher.  The teacher is copied
+immediately before expanding the head for task \(t\).  For \(t\ge1\),
+\[
+\begin{aligned}
+\mathcal{L}_t
+&=\mathcal{L}_{\mathrm{CE}}(z(x;y),y)
++\lambda T_{\mathrm{KD}}^2
+\operatorname{KL}\!\left(p^{\mathrm{teach}}(x)\,\middle\|\,p(x)\right),\\
+p^{\mathrm{teach}}(x)
+&=\operatorname{softmax}\!\left(
+z^{\mathrm{teach}}_{0:C_{t-1}-1}(x)/T_{\mathrm{KD}}
+\right),\\
+p(x)
+&=\operatorname{softmax}\!\left(
+z_{0:C_{t-1}-1}(x)/T_{\mathrm{KD}}
+\right).
+\end{aligned}
+\]
+and for \(t=0\) the distillation term is absent.  The reference setting uses
+\(\lambda=1.0\) and \(T_{\mathrm{KD}}=2.0\).  Distillation is applied only to
+classes seen before the current task.
+
+\subsection{Prediction}
+\label{subsec:prediction}
+
+The reference uses nearest-mean exemplar (NME) classification at evaluation
+time.  Given the final representation after task \(T-1\), prediction is
+\[
+\hat y(x)=
+\operatorname*{argmin}_{c\in\mathcal{C}_{T-1}}
+\left\|
+\bar f_\theta(x)-\bar{\hat\mu}_c^{(T-1)}
+\right\|_2 .
+\]
+Because both query features and exemplar means are normalized, this rule is
+equivalent to maximum cosine similarity to the selected-exemplar prototype.
+
+\subsection{Baselines and Ablations}
+\label{subsec:baselines-ablations}
+
+The study compares the reference method against two baselines and eight targeted
+variants.  The first baseline is an iCaRL-style replay method using herding,
+nearest-mean exemplar prediction, and binary cross-entropy distillation on old
+class outputs.  The second baseline is a static replay bank: it stores raw
+examples with the same task-boundary fixed-total quotas, uses random
+replacement within each class pool, and trains with uniformly sampled replay
+and cross-entropy.
+
+Component ablations change one design choice at a time relative to the locked
+reference configuration: removing distillation, evaluating with head logits
+instead of nearest-mean exemplars, replacing the cosine-margin head with a
+linear head, and replacing herding selection with random selection.  Resource
+sensitivity is measured by varying total memory \(M\in\{500,2000,4000\}\) and
+retrieval budget \(b\in\{32,64,128\}\), with \(M=2000\) and \(b=64\) as the
+reference point.
+
+\subsection{Evaluation Metrics}
+\label{subsec:evaluation-metrics}
+
+After each task \(i\), the model is evaluated separately on every task
+\(j\le i\), yielding an accuracy matrix \(R\).  The final average accuracy is
+\[
+\mathrm{ACC}=\frac{1}{T}\sum_{j=0}^{T-1} R_{T-1,j}.
+\]
+Forgetting is the mean drop from each old task's best observed accuracy to its
+final accuracy:
+\[
+\mathrm{F}=\frac{1}{T-1}\sum_{j=0}^{T-2}
+\left(\max_{i\in\{j,\ldots,T-1\}}R_{i,j}-R_{T-1,j}\right).
+\]
+Backward transfer is
+\[
+\mathrm{BWT}=\frac{1}{T-1}\sum_{j=0}^{T-2}
+\left(R_{T-1,j}-R_{j,j}\right).
+\]
+All scalar metrics are reported as the mean and population standard deviation
+over the three seeds.  For component and sensitivity rows, deltas are computed
+per seed against the matched reference seed before averaging.

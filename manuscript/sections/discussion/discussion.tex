@@ -1,0 +1,76 @@
+\section{Discussion}
+\label{sec:discussion}
+
+The results identify which choices matter within the fixed-total replay
+protocol, rather than establishing a universal ranking of class-incremental
+methods.  Three observations are especially consequential: the evaluation
+readout has the largest measured effect, KD primarily affects retention, and
+the total exemplar budget has a larger effect than the tested retrieval budget.
+
+\subsection{What Drives Performance}
+\label{subsec:what-drives-performance}
+
+The largest ablation effect arises from replacing nearest-mean exemplar (NME)
+evaluation with head-logit evaluation.  This change reduces final average
+accuracy by $10.38$ pp and increases forgetting by $32.50$ pp
+(Table~\ref{tab:t2-component-ablations}).  The result is consequential because
+both variants use the same training procedure and differ only at prediction
+time.  In this protocol, the classifier head is therefore not an adequate
+substitute for the selected-exemplar prototypes used by NME.  This conclusion
+is limited to the trained representation, cosine-margin head, and class order
+studied here; it does not imply that head-logit evaluation is unsuitable in all
+class-incremental systems.
+
+KD has a different role.  Removing it changes average accuracy by $-0.21$ pp
+but raises forgetting by $10.93$ pp.  Thus, under the reported objective, KD
+is chiefly a stability mechanism: it preserves prior-task performance without
+materially changing the final mean accuracy.  Herding also matters after the
+budget and replay procedure are held fixed.  Replacing herding with random
+selection reduces average accuracy by $4.83$ pp and increases forgetting by
+$4.50$ pp.  By contrast, changing the training head from cosine-margin to
+linear has a smaller effect under NME evaluation ($-1.42$ pp accuracy and
+$+0.83$ pp forgetting).  Within this experiment, matching the readout to the
+exemplar representation and selecting representative exemplars are more
+important than this particular head choice.
+
+\subsection{Resource Allocation and Design Implications}
+\label{subsec:resource-allocation}
+
+The resource sweep indicates that storage, rather than the number of replay
+items drawn per update, is the primary constrained resource over the tested
+range.  Reducing the memory from 2,000 to 500 exemplars loses $8.17$ pp in
+accuracy and adds $5.77$ pp of forgetting.  Doubling memory from 2,000 to
+4,000 improves both metrics, whereas doubling retrieval from 64 to 128 does
+not improve either mean metric (Table~\ref{tab:t3-resource-sensitivity}).
+These observations do not show that retrieval is irrelevant; they show that,
+for this backbone and these budgets, increasing retrieval beyond 64 is not the
+first allocation to prioritize.
+
+A practical configuration for the measured setting is consequently: reserve a
+fixed total memory budget large enough to retain examples from all observed
+classes, rebuild the selected set with herding, train with KD, and evaluate with
+NME.  If additional resources are available within the examined range, expanding
+memory is better supported by the measurements than increasing the retrieval
+budget.  The recommendation is conditional on the stated protocol and should
+be re-evaluated when the data stream, architecture, or storage constraint
+changes.
+
+\subsection{Limitations}
+\label{subsec:limitations}
+
+The empirical scope is deliberately narrow.  All experiments use CIFAR-100,
+one 10-task class partition induced by split seed 13, and a ResNet-18 backbone.
+The three seeds quantify training variation but do not measure sensitivity to
+alternative class orders, datasets, architectures, or task granularities.
+The paired tests for component ablations are based on three matched seeds and
+should be interpreted as supporting evidence, not as high-power estimates of
+small effects.
+
+The memory sweep covers 500, 2,000, and 4,000 exemplars.  Although the
+increment from 2,000 to 4,000 is smaller than the loss from 2,000 to 500, these
+three points do not establish a saturation threshold or a scaling law.  Finally,
+the baseline comparison is designed to isolate the replay, selection, and
+readout choices in this study; it is not an exhaustive comparison against the
+broader class-incremental-learning literature.  Extending the study across
+class orders and standard benchmarks, while retaining matched component
+ablations, is necessary before making broader method-level claims.

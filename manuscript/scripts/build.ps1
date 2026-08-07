@@ -35,7 +35,8 @@ function Invoke-PdfLatexBuild {
 
 if (Get-Command latexmk -ErrorAction SilentlyContinue) {
     if (Get-Command perl -ErrorAction SilentlyContinue) {
-        & latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir=$buildPath $MainFile
+        $latexmkOutDir = "-outdir={0}" -f $buildPath
+        & latexmk -pdf -interaction=nonstopmode -halt-on-error $latexmkOutDir $MainFile
         if ($LASTEXITCODE -eq 0) {
             exit 0
         }

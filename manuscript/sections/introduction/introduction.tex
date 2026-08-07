@@ -1,0 +1,58 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Class-incremental learning requires a classifier to learn disjoint groups of
+classes sequentially while, at evaluation time, distinguishing among all
+classes observed so far without being told the task identity.  The central
+practical constraint is that prior training data cannot usually be retained in
+full.  Replay addresses this constraint by storing a bounded set of examples,
+but a replay system is not specified by its memory size alone.  The allocation
+rule, exemplar-selection rule, retrieval budget, training objective, classifier
+geometry, and evaluation readout can all change the final accuracy and the
+amount of forgetting.
+
+These choices are often evaluated as bundled methods.  That makes it difficult
+to determine whether a measured improvement comes from the stored examples,
+the way they are selected, the loss used during training, or the rule used to
+classify an input after the class space has expanded.  This distinction is
+particularly important for exemplar methods: a learned classifier head may be
+useful for representation learning while a prototype-based readout is used at
+test time.  Treating these design choices as interchangeable can obscure the
+source of a result.
+
+This paper is a controlled empirical study of that design space, not a claim
+of a new class-incremental learning algorithm.  We study CIFAR-100 split into
+ten class-incremental tasks with a ResNet-18 backbone and a fixed total
+exemplar budget.  The reference configuration allocates memory across all seen
+classes, rebuilds a herded exemplar set after each task in the current feature
+space, trains with replay and old-class distillation, uses a cosine-margin
+head, and predicts with nearest-mean exemplars (NME).  We compare it with an
+iCaRL-style baseline and a random static replay bank, then alter one component
+at a time: distillation, evaluation readout, head type, and exemplar selection.
+Separate sweeps vary total memory and replay retrieval while holding the other
+reference choices fixed.
+
+The resulting comparisons show that the readout and the selection rule are not
+minor implementation details in this setting.  At 2,000 exemplars and a
+retrieval budget of 64, the reference obtains $44.99\pm1.00\%$ final average
+accuracy and $13.85\pm0.44\%$ forgetting.  Replacing NME with head-logit
+evaluation changes these values by $-10.38$ pp and $+32.50$ pp, respectively,
+whereas removing distillation changes final average accuracy by $-0.21$ pp but
+increases forgetting by $10.93$ pp.  The resource sweep further shows a larger
+change when memory is reduced from 2,000 to 500 exemplars ($-8.17$ pp accuracy)
+than when retrieval is reduced from 64 to 32 samples ($-1.71$ pp accuracy).
+These observations motivate an account of replay design centered on the
+interaction among stored prototypes, selection, and readout.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item We specify a fixed-memory exemplar protocol that rebuilds herded
+  exemplars after every task and separates the training
+  head from the NME evaluation rule.
+  \item We provide matched component ablations that attribute the observed
+  accuracy and forgetting changes to distillation, readout, head geometry, and
+  exemplar selection within one locked protocol.
+  \item We quantify memory and retrieval sensitivity, report accuracy,
+  forgetting, and backward transfer across three seeds, and state the limits of
+  the evidence for this single-dataset study.
+\end{itemize}
