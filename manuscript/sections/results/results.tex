@@ -119,16 +119,16 @@ seed variation.
   \label{tab:t3-resource-sensitivity}
   \small
   \resizebox{\linewidth}{!}{%
-  \begin{tabular}{llrrr}
+  \begin{tabular}{llrrrr}
     \toprule
-    Axis & Value & Average accuracy (\%) & Forgetting (\%) & $\Delta$ accuracy / forgetting (pp) \\
+    Axis & Value & Average accuracy (\%) & Forgetting (\%) & $\Delta$ accuracy (pp) & $\Delta$ forgetting (pp) \\
     \midrule
-    Memory & 500 & $36.83\pm0.36$ & $19.63\pm1.01$ & $-8.17$ / $+5.77$ \\
-    Memory & 2,000 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ / $0.00$ \\
-    Memory & 4,000 & $47.66\pm0.72$ & $12.67\pm1.03$ & $+2.66$ / $-1.18$ \\
-    Retrieval & 32 & $43.28\pm0.61$ & $14.98\pm0.99$ & $-1.71$ / $+1.13$ \\
-    Retrieval & 64 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ / $0.00$ \\
-    Retrieval & 128 & $44.81\pm0.78$ & $14.66\pm0.75$ & $-0.18$ / $+0.81$ \\
+    Memory & 500 & $36.83\pm0.36$ & $19.63\pm1.01$ & $-8.17$ & $+5.77$ \\
+    Memory & 2,000 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ & $0.00$ \\
+    Memory & 4,000 & $47.66\pm0.72$ & $12.67\pm1.03$ & $+2.66$ & $-1.18$ \\
+    Retrieval & 32 & $43.28\pm0.61$ & $14.98\pm0.99$ & $-1.71$ & $+1.13$ \\
+    Retrieval & 64 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ & $0.00$ \\
+    Retrieval & 128 & $44.81\pm0.78$ & $14.66\pm0.75$ & $-0.18$ & $+0.81$ \\
     \bottomrule
   \end{tabular}
   }
@@ -168,7 +168,7 @@ trade-off curve.
 
 Figure~\ref{fig:forgetting-by-age} exposes two contrasting failure modes.  The
 static bank incurs approximately $51$--$59$ pp forgetting for tasks 0--8, while
-head-logit evaluation incurs approximately $38$--$55$ pp over the same tasks.
+head-logit evaluation incurs approximately $25$--$55$ pp over the same tasks.
 The reference ranges from $7.6$ to $26.8$ pp for these tasks.  In both adverse
 configurations, the most recently introduced task has much higher final
 accuracy than older tasks (Figure~\ref{fig:per-task-accuracy}), so their final

@@ -14,7 +14,8 @@ incremented once after the final configured epoch; this recording discrepancy
 does not alter the configured schedule.
 
 Unless an ablation changes the relevant component, models use the cosine-margin
-head (scale 30, margin 0.35) with first-task imprinting, a distillation weight
+head (scale 30, margin 0.35) with weight imprinting of each new task's head rows
+(after task 0, which retains its random initialization), a distillation weight
 of 1 at temperature 2, and a retrieval budget of 64. The no-distillation
 ablation sets the distillation weight to zero; the linear-head ablation replaces
 the cosine-margin head. The static-bank baseline and the head-logit evaluation

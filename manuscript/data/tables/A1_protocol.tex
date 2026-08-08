@@ -17,7 +17,7 @@
     \midrule
     Dataset & CIFAR-100, 10 tasks x 10 classes, split seed 13, probe/val splits 30/20 \\
     Backbone & ResNet-18, base filters 64, dropout 0.0 \\
-    Head & cosine\_margin (scale 30.0, margin 0.35, first-task imprinting); linear for a3 \\
+    Head & cosine\_margin (scale 30.0, margin 0.35, weight imprinting of each new task's head rows after task 0); linear for a3 \\
     Optimizer & SGD lr 0.1 / momentum 0.9 / weight decay 0.0005, grad clip 1.0, no LR schedule, warmup 0 \\
     Epochs per task & 70 configured; 71 recorded for all 33 seeds (off-by-one in the epoch counter) \\
     Batch size & 128 \\

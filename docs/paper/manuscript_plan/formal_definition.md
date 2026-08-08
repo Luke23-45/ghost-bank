@@ -76,22 +76,22 @@ each class \(c \in \mathcal{C}_t\):
 - otherwise, select \(q_c^{(t)}\) exemplars greedily so that the running mean of
   the selected features tracks the class mean.
 
-Let \(q = q_c^{(t)}\), \(s_0 = 0\), and let \(x_1, \dots, x_q\) be the selected
+Let \(q = q_c^{(t)}\), \(S_0 = 0\), and let \(x_1, \dots, x_q\) be the selected
 examples. The greedy step is
 \[
 x_k \in \underset{x \in \mathcal{P}_c^{(t)} \setminus \{x_1, \dots, x_{k-1}\}}
 {\operatorname*{argmin}}
 \left\|
-\varphi^{(t)}(x) - \left(k \mu_c^{(t)} - s_{k-1}\right)
+\varphi^{(t)}(x) - \left(k \mu_c^{(t)} - S_{k-1}\right)
 \right\|_2^2,
 \qquad
-s_k = s_{k-1} + \varphi^{(t)}(x_k),
+S_k = S_{k-1} + \varphi^{(t)}(x_k),
 \]
 for \(k = 1, \dots, q\). The selected exemplar set is
 \[
 \mathcal{E}_c^{(t)} = \{x_1, \dots, x_q\},
 \qquad
-\hat{\mu}_c^{(t)} = \frac{1}{q} \sum_{j=1}^q \varphi^{(t)}(x_j) = \frac{s_q}{q}.
+\hat{\mu}_c^{(t)} = \frac{1}{q} \sum_{j=1}^q \varphi^{(t)}(x_j) = \frac{S_q}{q}.
 \]
 This is the standard iCaRL herding rule written in equivalent form: the selected
 set is chosen so that its mean approximates the full-pool mean \(\mu_c^{(t)}\).

@@ -67,13 +67,13 @@ exemplar set is rebuilt in the current feature space.  For class \(c\), let
 be the mean feature of the stored pool under the current network.  If
 \(q_c^{(t)}\ge |\mathcal{P}_c^{(t)}|\), all examples in the pool are selected.
 Otherwise, exemplars \(x_1,\ldots,x_q\), with \(q=q_c^{(t)}\), are chosen
-greedily.  With \(s_0=0\), the \(k\)-th exemplar is
+greedily.  With \(S_0=0\), the \(k\)-th exemplar is
 \[
 x_k \in
 \operatorname*{argmin}_{x\in\mathcal{P}_c^{(t)}\setminus\{x_1,\ldots,x_{k-1}\}}
-\left\|f_\theta(x)-\left(k\mu_c^{(t)}-s_{k-1}\right)\right\|_2^2,
+\left\|f_\theta(x)-\left(k\mu_c^{(t)}-S_{k-1}\right)\right\|_2^2,
 \qquad
-s_k=s_{k-1}+f_\theta(x_k).
+S_k=S_{k-1}+f_\theta(x_k).
 \]
 The prototype stored for nearest-mean classification is the mean feature of the
 selected exemplars,
@@ -94,8 +94,8 @@ images are re-augmented before being concatenated with the current minibatch.
 The reference uses \(M=2000\) and \(b=64\).
 
 The optimization loss is cross-entropy on the expanded label space plus
-old-class distillation from a frozen teacher.  The teacher is copied
-immediately before expanding the head for task \(t\).  For \(t\ge1\),
+old-class knowledge distillation (KD) from a frozen teacher.  The teacher is
+copied immediately before expanding the head for task \(t\).  For \(t\ge1\),
 \[
 \begin{aligned}
 \mathcal{L}_t
