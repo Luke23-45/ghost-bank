@@ -1,6 +1,6 @@
 import torch
 
-from src.bank.strategies.herding import HerdingReplayBank
+from src.methods.uniform_herding.herding import UniformHerdingReplayBank
 
 
 class DummyModel(torch.nn.Module):
@@ -21,7 +21,7 @@ def _make_examples(labels: list[int]) -> list[tuple[torch.Tensor, int]]:
 
 
 def test_rebuild_selected_and_query():
-    bank = HerdingReplayBank(num_classes=3, total_budget=6, seed=0)
+    bank = UniformHerdingReplayBank(num_classes=3, total_budget=6, seed=0)
     bank.store(_make_examples([0, 0, 0, 1, 1, 1]))
     stats = bank.rebuild_selected(
         model=DummyModel(),

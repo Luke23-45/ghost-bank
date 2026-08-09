@@ -55,31 +55,43 @@ and
 In the experimental regime of this study, \(M \ge C_t\), so every seen class
 receives at least one exemplar.
 
-## 4. Storage Pools
+## 4. Active Memory and Current-Task Candidates
 
-During training of task \(t\), each raw training example is inserted once into
-its class pool. Only unaugmented samples are stored, and each dataset index is
-deduplicated so that no example appears more than once in a given pool.
-Consequently, \(\mathcal{P}_c^{(t)}\) is monotone nondecreasing in \(t\):
+The implementation keeps only the selected exemplar set from completed tasks
+in persistent replay memory. During task \(t\), raw examples from the current
+task are accumulated in a transient candidate pool; they are available because
+the current task is being trained, but they are not retained after the
+task-boundary rebuild. Only unaugmented samples are stored, and dataset indices
+are deduplicated within the current task.
+
+Let \(\mathcal{E}_c^{(t-1)}\) be the persistent selected exemplars for an old
+class and let \(\mathcal{P}_{c,\mathrm{cur}}^{(t)}\) be the transient current-task
+pool. The candidates available for rebuilding are
 \[
-\mathcal{P}_c^{(t-1)} \subseteq \mathcal{P}_c^{(t)}.
+\mathcal{Q}_c^{(t)} =
+\mathcal{E}_c^{(t-1)} \cup \mathcal{P}_{c,\mathrm{cur}}^{(t)},
 \]
+with \(\mathcal{E}_c^{(-1)}=\varnothing\) for newly introduced classes. The
+current-task pool is discarded after selection, and the persistent state becomes
+\(\mathcal{E}_c^{(t)}\). Thus persistent replay storage contains at most \(M\)
+examples at every task boundary; the implementation does not retain an
+unbounded historical candidate archive.
 
 ## 5. Herding Selection
 
 After task \(t\) has finished training and before evaluation, the exemplar sets
-are rebuilt from scratch in the current feature space \(\varphi^{(t)}\). For
-each class \(c \in \mathcal{C}_t\):
+are rebuilt from the candidates \(\mathcal{Q}_c^{(t)}\) in the current feature
+space \(\varphi^{(t)}\). For each class \(c \in \mathcal{C}_t\):
 
-- if \(q_c^{(t)} \ge |\mathcal{P}_c^{(t)}|\), then \(\mathcal{E}_c^{(t)} =
-  \mathcal{P}_c^{(t)}\);
+- if \(q_c^{(t)} \ge |\mathcal{Q}_c^{(t)}|\), then \(\mathcal{E}_c^{(t)} =
+  \mathcal{Q}_c^{(t)}\);
 - otherwise, select \(q_c^{(t)}\) exemplars greedily so that the running mean of
   the selected features tracks the class mean.
 
 Let \(q = q_c^{(t)}\), \(S_0 = 0\), and let \(x_1, \dots, x_q\) be the selected
 examples. The greedy step is
 \[
-x_k \in \underset{x \in \mathcal{P}_c^{(t)} \setminus \{x_1, \dots, x_{k-1}\}}
+x_k \in \underset{x \in \mathcal{Q}_c^{(t)} \setminus \{x_1, \dots, x_{k-1}\}}
 {\operatorname*{argmin}}
 \left\|
 \varphi^{(t)}(x) - \left(k \mu_c^{(t)} - S_{k-1}\right)
@@ -93,12 +105,15 @@ for \(k = 1, \dots, q\). The selected exemplar set is
 \qquad
 \hat{\mu}_c^{(t)} = \frac{1}{q} \sum_{j=1}^q \varphi^{(t)}(x_j) = \frac{S_q}{q}.
 \]
-This is the standard iCaRL herding rule written in equivalent form: the selected
-set is chosen so that its mean approximates the full-pool mean \(\mu_c^{(t)}\).
+This is the standard iCaRL herding rule applied to the candidates available
+under the bounded-memory protocol: the selected set approximates the mean of
+\(\mathcal{Q}_c^{(t)}\). The selection rule is shared with iCaRL; the memory
+refresh policy and candidate set differ.
 
-Selection is recomputed after every task, including task \(0\). The exemplar set
-is therefore adapted to the current representation rather than fixed once and
-only truncated thereafter.
+Selection is recomputed after every task, including task \(0\). Old classes are
+reselected from their currently stored exemplars, while newly arriving classes
+are selected from the current-task pool. The exemplar set is therefore adapted
+to the current representation without retaining a full historical archive.
 
 ## 6. Training Objective
 

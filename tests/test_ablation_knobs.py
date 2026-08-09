@@ -8,8 +8,10 @@ import pytest
 import torch
 from omegaconf import OmegaConf
 
-from src.bank.strategies import HerdingReplayBank
-from src.bank.strategies.herding import _herding_select
+from src.methods.uniform_herding.herding import (
+    UniformHerdingReplayBank,
+    _herding_select,
+)
 from src.methods import UniformHerdingMethod
 from studies.runner.common.base_runner import create_bank, create_method
 
@@ -89,26 +91,26 @@ def _constant_pool(n: int) -> list:
     ]
 
 
-def _picked_indices(bank: HerdingReplayBank) -> list:
+def _picked_indices(bank: UniformHerdingReplayBank) -> list:
     return [int(item[0][0, 0, 0].item()) for item in bank.selected[0]]
 
 
 class TestSelectionKnob:
 
     def test_default_is_herding(self):
-        bank = HerdingReplayBank(num_classes=1, total_budget=4, seed=0)
+        bank = UniformHerdingReplayBank(num_classes=1, total_budget=4, seed=0)
         assert bank._selection == "herding"
 
     def test_invalid_selection_raises(self):
         with pytest.raises(ValueError, match="selection"):
-            HerdingReplayBank(
+            UniformHerdingReplayBank(
                 num_classes=1, total_budget=4, seed=0, selection="fancy"
             )
 
     def test_random_branch_matches_seeded_random(self):
         seed = 7
         features = torch.randn(8, 5)
-        bank = HerdingReplayBank(
+        bank = UniformHerdingReplayBank(
             num_classes=1, total_budget=4, seed=seed, selection="random"
         )
         for item in _constant_pool(8):
@@ -119,7 +121,7 @@ class TestSelectionKnob:
 
     def test_herding_branch_matches_herding_select(self):
         features = torch.randn(8, 5)
-        bank = HerdingReplayBank(
+        bank = UniformHerdingReplayBank(
             num_classes=1, total_budget=4, seed=99, selection="herding"
         )
         for item in _constant_pool(8):
@@ -130,14 +132,14 @@ class TestSelectionKnob:
 
     def test_create_bank_wires_in_selection(self):
         cfg = OmegaConf.create({
-            "bank": {"name": "herding", "selection": "random"},
+            "bank": {"name": "uniform_herding", "selection": "random"},
             "data": {"memory_total": 100},
         })
         bank = create_bank(cfg, num_classes=4, run_seed=3)
         assert bank is not None
         assert bank._selection == "random"
         default = create_bank(OmegaConf.create({
-            "bank": {"name": "herding"},
+            "bank": {"name": "uniform_herding"},
             "data": {"memory_total": 100},
         }), num_classes=4, run_seed=3)
         assert default._selection == "herding"

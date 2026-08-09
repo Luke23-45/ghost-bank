@@ -87,7 +87,7 @@ REFERENCE_SCHEMA: dict[str, Any] = {
     "training.logging.level": "warning",
     "output.save_checkpoint": False,
     "debug": False,
-    "bank.name": "herding",
+    "bank.name": "uniform_herding",
     "bank.floor": 1,
     "bank.exclude_classes": [],
     "bank.selection": "herding",
@@ -238,7 +238,7 @@ def validate_resolved_config(
     declared_extra:
         Synthetic declarations used to value-verify intent that is not
         expressed as a raw Hydra override, e.g. ``("method.name", "icarl")``
-        and ``("bank.name", "herding")``.  These keys are exempt from the
+        and ``("bank.name", "uniform_herding")``.  These keys are exempt from the
         lock comparison exactly like a declared override and are
         value-checked against the resolved config.
     """

@@ -12,7 +12,7 @@ ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
 RUNNER = str(ROOT / "studies/runner/cifar100/run.py")
 
-METHODS: list[str] = ["baseline", "static_bank", "uniform_herding"]
+METHODS: list[str] = ["baseline", "static_bank", "icarl", "uniform_herding"]
 
 
 def main() -> None:

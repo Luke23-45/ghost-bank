@@ -12,7 +12,9 @@ from tqdm import tqdm
 from src.bank.core.base import AbstractGhostBank
 from src.bank.core.exposure import ExposureTracker
 from src.bank.core.pid_controller import PIDController
-from src.bank.strategies import StaticReplayBank, HerdingReplayBank
+from src.bank.strategies import StaticReplayBank
+from src.methods.icarl.herding import iCaRLReplayBank
+from src.methods.uniform_herding.herding import UniformHerdingReplayBank
 from src.data.cifar100 import CIFAR100DataModule, CIFAR100Config
 from src.methods import BaselineMethod, Method, StaticBankMethod, UniformHerdingMethod, iCaRLMethod
 from src.models import ResNet, ResNetConfig
@@ -147,14 +149,22 @@ def create_bank(
     seed = bc.get("seed", run_seed)
     if bc.name == "static":
         return StaticReplayBank(num_classes, bc.capacity_per_class, seed, exclude_classes=exclude)
-    if bc.name == "herding":
-        return HerdingReplayBank(
+    if bc.name == "uniform_herding":
+        return UniformHerdingReplayBank(
             num_classes=num_classes,
             total_budget=cfg.data.get("memory_total", 2000),
             seed=seed,
             floor=bc.get("floor", 1),
             exclude_classes=exclude,
             selection=bc.get("selection", "herding"),
+        )
+    if bc.name == "icarl":
+        return iCaRLReplayBank(
+            num_classes=num_classes,
+            total_budget=cfg.data.get("memory_total", 2000),
+            seed=seed,
+            floor=bc.get("floor", 1),
+            exclude_classes=exclude,
         )
     return None
 

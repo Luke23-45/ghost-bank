@@ -168,7 +168,7 @@ class TestComposeValidate:
         with pytest.raises(ProtocolViolation, match="model.head"):
             validate_resolved_config(
                 cfg, UNIFORM_REF_BASE, SEEDS,
-                declared_extra=[("method.name", "uniform_herding"), ("bank.name", "herding")],
+                declared_extra=[("method.name", "uniform_herding"), ("bank.name", "uniform_herding")],
             )
 
     def test_declared_value_mismatch_rejected(self):
@@ -178,7 +178,7 @@ class TestComposeValidate:
         with pytest.raises(ProtocolViolation, match="did not match the resolved config"):
             validate_resolved_config(
                 cfg, ["model.head=linear"], SEEDS,
-                declared_extra=[("method.name", "uniform_herding"), ("bank.name", "herding")],
+                declared_extra=[("method.name", "uniform_herding"), ("bank.name", "uniform_herding")],
             )
 
     def test_method_name_mismatch_rejected(self):
@@ -186,7 +186,7 @@ class TestComposeValidate:
         with pytest.raises(ProtocolViolation):
             validate_resolved_config(
                 cfg, UNIFORM_REF_BASE, SEEDS,
-                declared_extra=[("method.name", "baseline"), ("bank.name", "herding")],
+                declared_extra=[("method.name", "baseline"), ("bank.name", "uniform_herding")],
             )
 
     def test_seeds_override_lands(self):
@@ -194,7 +194,7 @@ class TestComposeValidate:
         cfg, _ = compose_row_cfg(row, [1, 2], Path("__test_cfg__/ref5"))
         assert list(cfg.runner.seeds) == [1, 2]
         validate_resolved_config(cfg, UNIFORM_REF_BASE, [1, 2], declared_extra=[
-            ("method.name", "uniform_herding"), ("bank.name", "herding"),
+            ("method.name", "uniform_herding"), ("bank.name", "uniform_herding"),
         ])
 
 

@@ -10,11 +10,11 @@ import torch
 import torch.nn.functional as F
 
 from src.bank.strategies.static import StaticReplayBank
-from src.bank.strategies.herding import HerdingReplayBank
 from src.methods.base import MethodContext
 from src.methods.baseline import BaselineMethod
 from src.methods.static_bank import StaticBankMethod
 from src.methods.uniform_herding import UniformHerdingMethod
+from src.methods.uniform_herding.herding import UniformHerdingReplayBank
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -173,16 +173,16 @@ class TestUniformHerdingMethod:
 
     def test_raw_indices_deduplicate_storage(self):
         method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=9999)
-        bank = HerdingReplayBank(num_classes=NUM_CLASSES, total_budget=20, seed=0)
+        bank = UniformHerdingReplayBank(num_classes=NUM_CLASSES, total_budget=20, seed=0)
         pl_module = MockModule()
         pl_module.global_step = 0
         batch = _make_batch()
         context = _make_context()
 
         method.compute_loss(batch, pl_module, bank=bank, context=context)
-        first_total = sum(len(pool) for pool in bank._bank.values())
+        first_total = sum(len(pool) for pool in bank._current_pool.values())
         method.compute_loss(batch, pl_module, bank=bank, context=context)
-        second_total = sum(len(pool) for pool in bank._bank.values())
+        second_total = sum(len(pool) for pool in bank._current_pool.values())
 
         assert first_total == second_total
 
@@ -191,7 +191,7 @@ class TestUniformHerdingMethod:
 
 class TestNmePrediction:
     def _bank(self, means: dict[int, torch.Tensor] | None):
-        bank = HerdingReplayBank(num_classes=NUM_CLASSES, total_budget=20, seed=0)
+        bank = UniformHerdingReplayBank(num_classes=NUM_CLASSES, total_budget=20, seed=0)
         if means is not None:
             bank.class_means = means
         return bank
@@ -298,7 +298,7 @@ class TestUniformHerdingKD:
         method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=0, kd_weight=1.0)
         method.on_task_start(model, task_id=1)  # teacher == student before any drift
         pl = _RealForwardPl(model)
-        bank = HerdingReplayBank(num_classes=3, total_budget=20, seed=0)
+        bank = UniformHerdingReplayBank(num_classes=3, total_budget=20, seed=0)
         x = torch.randn(4, 3)
         y = torch.tensor([0, 1, 0, 2])
         loss = method.compute_loss((x, y), pl, bank=bank)
@@ -310,7 +310,7 @@ class TestUniformHerdingKD:
         method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=0, kd_weight=1.0)
         method.on_task_start(model, task_id=1)
         pl = _RealForwardPl(model)
-        bank = HerdingReplayBank(num_classes=3, total_budget=20, seed=0)
+        bank = UniformHerdingReplayBank(num_classes=3, total_budget=20, seed=0)
         x = torch.randn(4, 3)
         y = torch.tensor([0, 1, 0, 2])
 

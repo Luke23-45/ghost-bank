@@ -56,21 +56,27 @@ where \(c_i\) denotes the \(i\)-th internal class identifier.  Thus the selected
 sets sum exactly to \(M\), and every observed class has a positive quota in the
 reported budget range because \(M\ge C_t\) for every task.
 
-During task \(t\), each raw training example is inserted once into a class pool
-\(\mathcal{P}_c^{(t)}\).  The stored item is the unaugmented image and its
-internal label.  After training task \(t\), and before evaluation, the selected
-exemplar set is rebuilt in the current feature space.  For class \(c\), let
+During task \(t\), each raw training example is inserted once into a transient
+current-task candidate pool. The stored item is the unaugmented image and its
+internal label. Persistent replay memory contains only selected exemplars from
+completed tasks. After training task \(t\), and before evaluation, the method
+combines the active exemplars of old classes with the current-task candidate
+pool and rebuilds the selected exemplar set in the current feature space. For
+class \(c\), let
 \[
-\mu_c^{(t)}=\frac{1}{|\mathcal{P}_c^{(t)}|}
-\sum_{x\in\mathcal{P}_c^{(t)}} f_\theta(x)
+\mathcal{Q}_c^{(t)}
+=\mathcal{E}_c^{(t-1)}\cup\mathcal{P}_{c,\mathrm{cur}}^{(t)},
+\qquad
+\mu_c^{(t)}=\frac{1}{|\mathcal{Q}_c^{(t)}|}
+\sum_{x\in\mathcal{Q}_c^{(t)}} f_\theta(x)
 \]
-be the mean feature of the stored pool under the current network.  If
-\(q_c^{(t)}\ge |\mathcal{P}_c^{(t)}|\), all examples in the pool are selected.
+be the candidate set and its mean feature under the current network. If
+\(q_c^{(t)}\ge |\mathcal{Q}_c^{(t)}|\), all candidates are selected.
 Otherwise, exemplars \(x_1,\ldots,x_q\), with \(q=q_c^{(t)}\), are chosen
 greedily.  With \(S_0=0\), the \(k\)-th exemplar is
 \[
 x_k \in
-\operatorname*{argmin}_{x\in\mathcal{P}_c^{(t)}\setminus\{x_1,\ldots,x_{k-1}\}}
+\operatorname*{argmin}_{x\in\mathcal{Q}_c^{(t)}\setminus\{x_1,\ldots,x_{k-1}\}}
 \left\|f_\theta(x)-\left(k\mu_c^{(t)}-S_{k-1}\right)\right\|_2^2,
 \qquad
 S_k=S_{k-1}+f_\theta(x_k).
@@ -80,8 +86,9 @@ selected exemplars,
 \[
 \hat\mu_c^{(t)}=\frac{1}{q}\sum_{k=1}^{q} f_\theta(x_k).
 \]
-Rebuilding is performed after every task, including task 0.  Consequently, old
-classes may receive different exemplars after the representation changes.
+Rebuilding is performed after every task, including task 0. Only selected
+exemplars survive the boundary; the current-task candidate pool is discarded,
+so persistent replay storage never exceeds the total budget \(M\).
 
 \subsection{Replay and Distillation}
 \label{subsec:replay-distillation}

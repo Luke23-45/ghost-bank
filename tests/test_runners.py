@@ -4,10 +4,12 @@ import torch
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 
-from src.bank.strategies import StaticReplayBank, HerdingReplayBank
+from src.bank.strategies import StaticReplayBank
 from src.methods.baseline import BaselineMethod
+from src.methods.icarl.herding import iCaRLReplayBank
 from src.methods.static_bank import StaticBankMethod
 from src.methods.uniform_herding import UniformHerdingMethod
+from src.methods.uniform_herding.herding import UniformHerdingReplayBank
 from src.models import ResNet
 from studies.runner.cifar100.run import CIFAR100Runner
 from studies.runner.common.base_runner import (
@@ -63,17 +65,29 @@ class TestCreateBank:
         bank = create_bank(cfg, num_classes=10)
         assert isinstance(bank, StaticReplayBank)
 
-    def test_herding_bank(self):
+    def test_uniform_herding_bank(self):
         cfg = OmegaConf.create({
             "data": {"memory_total": 2000},
             "bank": {
-                "name": "herding",
+                "name": "uniform_herding",
                 "seed": 42,
                 "floor": 1,
             }
         })
         bank = create_bank(cfg, num_classes=10)
-        assert isinstance(bank, HerdingReplayBank)
+        assert isinstance(bank, UniformHerdingReplayBank)
+
+    def test_icarl_bank(self):
+        cfg = OmegaConf.create({
+            "data": {"memory_total": 2000},
+            "bank": {
+                "name": "icarl",
+                "seed": 42,
+                "floor": 1,
+            }
+        })
+        bank = create_bank(cfg, num_classes=10)
+        assert isinstance(bank, iCaRLReplayBank)
 
     def test_unknown_bank_returns_none(self):
         cfg = OmegaConf.create({

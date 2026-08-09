@@ -7,12 +7,12 @@ import torch
 import pytorch_lightning as pl
 from src.methods.uniform_herding.method import UniformHerdingMethod
 from src.training.pl_module import GhostBankLightningModule
-from src.bank.strategies.herding import HerdingReplayBank
 from src.models.resnet.model import ResNet
+from src.methods.uniform_herding.herding import UniformHerdingReplayBank
 
 def test():
     model = ResNet(num_classes=10)
-    bank = HerdingReplayBank(num_classes=10, total_budget=2000, seed=42)
+    bank = UniformHerdingReplayBank(num_classes=10, total_budget=2000, seed=42)
     bank.start_task()
     method = UniformHerdingMethod(retrieval_budget=64, warmup_steps=0)
     

@@ -51,7 +51,25 @@ from src.data.cifar100.transforms import make_train_transform_from_rng
 from src.data.cifar100.transforms import make_eval_transform
 from studies.runner.common.path_utils import get_config_dir
 
-BANK_MAP = {"static_bank": "static", "uniform_herding": "herding", "icarl": "herding"}
+BANK_MAP = {"static_bank": "static", "uniform_herding": "uniform_herding", "icarl": "icarl"}
+
+
+def _resolve_hardware(cfg: DictConfig) -> tuple[str, str]:
+    """Resolve (accelerator, precision) that actually work on this machine.
+
+    The training config targets GPU workstations (``accelerator: gpu``,
+    ``precision: 16-mixed``).  Constructing a Trainer with ``gpu`` on a
+    machine without CUDA raises ``MisconfigurationException`` before any
+    training starts.  When CUDA is unavailable, fall back to CPU and to
+    fp32 precision (mixed precision on CPU silently degrades to bf16,
+    which can shift results and is slower than fp32 on many CPUs).
+    """
+    accelerator = cfg.training.get("accelerator", "auto")
+    precision = str(cfg.training.get("precision", "32"))
+    if accelerator in ("gpu", "cuda") and not torch.cuda.is_available():
+        accelerator = "cpu"
+        precision = "32"
+    return accelerator, precision
 
 
 def _aggregate_metrics(all_metrics: list[dict]) -> dict:
@@ -215,7 +233,6 @@ class CIFAR100Runner(AbstractRunner):
             all_metrics.append(metrics)
 
         aggregated = _aggregate_metrics(all_metrics)
-
         try:
             matrices: list[list[list[float]]] = []
             for m in all_metrics:
@@ -313,6 +330,7 @@ class CIFAR100Runner(AbstractRunner):
         pl.seed_everything(seed, workers=True)
         _seed_t0 = time.time()
         debug = bool(cfg.get("debug", False))
+        accelerator, precision = _resolve_hardware(cfg)
 
         dm = create_datamodule(cfg)
         dm.setup("fit")
@@ -438,9 +456,9 @@ class CIFAR100Runner(AbstractRunner):
             )
 
             trainer = pl.Trainer(
-                accelerator=getattr(cfg.training, "accelerator", "auto"),
+                accelerator=accelerator,
                 devices=getattr(cfg.training, "devices", 1),
-                precision=getattr(cfg.training, "precision", 32),
+                precision=precision,
                 max_epochs=cfg.runner.get("epochs_per_task", 70),
                 log_every_n_steps=cfg.training.log_every_n_steps,
                 gradient_clip_val=cfg.training.get("gradient_clip_val", None),

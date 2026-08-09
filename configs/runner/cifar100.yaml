@@ -1,4 +1,4 @@
 experiment_name: cifar100
 seeds: [1993, 2023, 42]
-methods: [baseline, static_bank, uniform_herding]
+methods: [baseline, static_bank, icarl, uniform_herding]
 epochs_per_task: 70

@@ -6,7 +6,7 @@ import torch
 
 from src.bank.core.allocator import allocate_uniform_fixed_total
 from src.bank.strategies.static import StaticReplayBank
-from src.bank.strategies.herding import HerdingReplayBank
+from src.methods.uniform_herding.herding import UniformHerdingReplayBank
 
 
 def _make_examples(
@@ -102,7 +102,7 @@ class TestStaticReplayBank:
 
 class TestHerdingReplayBank:
     def test_rebuild_selected_and_query(self):
-        bank = HerdingReplayBank(num_classes=3, total_budget=6, seed=0)
+        bank = UniformHerdingReplayBank(num_classes=3, total_budget=6, seed=0)
         bank.store([
             (torch.full((3, 4, 4), 1.0), 0),
             (torch.full((3, 4, 4), 2.0), 0),
