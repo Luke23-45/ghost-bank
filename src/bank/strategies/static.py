@@ -46,6 +46,10 @@ class StaticReplayBank(AbstractGhostBank):
             return y
         return torch.tensor(y, dtype=torch.long)
 
+    def start_task(self) -> None:
+        """Reset per-task index deduplication for the next task view."""
+        self._seen_indices.clear()
+
     def store(self, examples: list, raw_indices: torch.Tensor | None = None) -> None:
         if getattr(self, "_frozen", False):
             return

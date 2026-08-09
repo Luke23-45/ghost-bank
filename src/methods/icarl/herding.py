@@ -229,6 +229,8 @@ class iCaRLReplayBank(AbstractGhostBank):
             "bank": {c: list(pool) for c, pool in self._bank.items()},
             "current_pool": {c: list(pool) for c, pool in self._current_pool.items()},
             "herded": sorted(self._herded),
+            "class_means": {c: mean.clone() for c, mean in self.class_means.items()},
+            "seen_indices": list(self._seen_indices),
             "total_budget": self._total_budget,
             "floor": self._floor,
         }
@@ -240,5 +242,10 @@ class iCaRLReplayBank(AbstractGhostBank):
             for c, pool in state.get("current_pool", {}).items()
         }
         self._herded = set(int(c) for c in state.get("herded", []))
+        self.class_means = {
+            int(c): mean.clone()
+            for c, mean in state.get("class_means", {}).items()
+        }
+        self._seen_indices = set(int(i) for i in state.get("seen_indices", []))
         self._total_budget = state.get("total_budget", self._total_budget)
         self._floor = state.get("floor", self._floor)
