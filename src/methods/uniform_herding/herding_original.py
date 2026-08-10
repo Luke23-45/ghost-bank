@@ -40,32 +40,24 @@ def _herding_select(features: torch.Tensor, budget: int) -> list[int]:
     class_mean = features.mean(dim=0)
     selected: list[int] = []
     selected_sum = torch.zeros_like(class_mean)
-
+    
     available = torch.ones(n, dtype=torch.bool)
-
+    
     for k in range(1, budget + 1):
         target = k * class_mean - selected_sum
         dists = torch.sum((features - target) ** 2, dim=1)
         dists[~available] = float("inf")
         best_idx = int(torch.argmin(dists).item())
-
+        
         selected.append(best_idx)
         available[best_idx] = False
         selected_sum += features[best_idx]
-
+        
     return selected
 
 
 class UniformHerdingReplayBank(AbstractGhostBank):
-    """Fixed-memory replay bank that re-selects exemplars with herding.
-
-    Two nested, both-bounded budgets:
-      - `total_budget`: size of `_selected`, the set actually replayed.
-      - `pool_multiplier * quota` per class: size of `_bank`, the candidate
-        pool `rebuild_selected` re-herds from. Total footprint is bounded by
-        `pool_multiplier * total_budget` at all times, including mid-task
-        (via reservoir-bounded `store()`), not just at rebuild boundaries.
-    """
+    """Fixed-total replay bank that re-selects exemplars with herding."""
 
     def __init__(
         self,
@@ -75,7 +67,6 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         floor: int = 1,
         exclude_classes: Collection[int] | None = None,
         selection: str = "herding",
-        pool_multiplier: int = 3,
     ) -> None:
         if selection not in ("herding", "random"):
             raise ValueError(
@@ -92,12 +83,6 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         self._num_classes = num_classes
         self._selection = selection
 
-        # --- fixed-memory bookkeeping ---
-        self._pool_multiplier = max(1, pool_multiplier)
-        default_cap = max(self._floor, 1) * self._pool_multiplier
-        self._pool_caps: dict[int, int] = {c: default_cap for c in self._bank}
-        self._seen_count: dict[int, int] = {c: 0 for c in self._bank}
-
     @staticmethod
     def _to_tensor_label(y: object) -> torch.Tensor:
         if torch.is_tensor(y):
@@ -106,24 +91,6 @@ class UniformHerdingReplayBank(AbstractGhostBank):
 
     def start_task(self) -> None:
         self._seen_indices.clear()
-
-    def _reservoir_insert(self, cid: int, item: tuple) -> None:
-        """Bounded, class-local reservoir insertion (classic Algorithm R).
-
-        Keeps `_bank[cid]` at or below `_pool_caps[cid]` at all times,
-        including mid-task, with each item seen so far having equal
-        probability of surviving in the pool.
-        """
-        cap = self._pool_caps.get(cid, max(self._floor, 1) * self._pool_multiplier)
-        pool = self._bank[cid]
-        self._seen_count[cid] = self._seen_count.get(cid, 0) + 1
-        k = self._seen_count[cid]
-        if len(pool) < cap:
-            pool.append(item)
-        else:
-            j = self._rng.randint(1, k)
-            if j <= cap:
-                pool[j - 1] = item
 
     def store(self, examples: list, raw_indices: torch.Tensor | None = None) -> None:
         indices = raw_indices.tolist() if raw_indices is not None else None
@@ -136,53 +103,20 @@ class UniformHerdingReplayBank(AbstractGhostBank):
             y = self._to_tensor_label(y)
             cid = _to_int(y)
             if cid in self._bank:
-                self._reservoir_insert(cid, (x, y))
+                self._bank[cid].append((x, y))
+
+    def query(self, budget: int, **kwargs) -> list:
+        if budget <= 0:
+            return []
+        return sample_uniform(self._selected, budget, self._rng)
 
     def expand(self, num_new_classes: int) -> None:
         max_existing = max(self._bank.keys()) if self._bank else -1
-        default_cap = max(self._floor, 1) * self._pool_multiplier
         for c in range(max_existing + 1, max_existing + 1 + num_new_classes):
             if c not in self._bank:
                 self._bank[c] = []
             if c not in self._selected:
                 self._selected[c] = []
-            self._pool_caps.setdefault(c, default_cap)
-            self._seen_count.setdefault(c, 0)
-        # NOTE: self._num_classes is intentionally left untouched here — see
-        # the flag about it below the code block before relying on expand().
-
-    @staticmethod
-    def _enforce_floor(allocation: list[int], active_classes: set[int], floor: int) -> list[int]:
-        """Guarantee every class with a non-empty pool keeps >= floor slots.
-
-        Defensive, local safeguard: prevents a temporary allocation dip from
-        permanently wiping a class's bank once pruning is in effect (see
-        rebuild_selected). Borrows slack from whichever classes currently
-        have the most. If total_budget can't cover floor * len(active_classes)
-        this cannot fully succeed — that's a genuine capacity limit, not a
-        bug, and should be treated as a sizing problem with total_budget/floor.
-        """
-        allocation = list(allocation)
-        deficit = [c for c in active_classes if c < len(allocation) and allocation[c] < floor]
-        if not deficit:
-            return allocation
-        needed = sum(floor - allocation[c] for c in deficit)
-        for c in deficit:
-            allocation[c] = floor
-        donors = sorted(
-            (c for c in range(len(allocation)) if c not in deficit),
-            key=lambda c: allocation[c],
-            reverse=True,
-        )
-        i = 0
-        guard = 10_000 * max(1, len(donors))
-        while needed > 0 and donors and i < guard:
-            c = donors[i % len(donors)]
-            if allocation[c] > floor:
-                allocation[c] -= 1
-                needed -= 1
-            i += 1
-        return allocation
 
     def rebuild_selected(
         self,
@@ -199,8 +133,6 @@ class UniformHerdingReplayBank(AbstractGhostBank):
                 total_budget=self._total_budget,
                 floor=self._floor,
             )
-        active_classes = {c for c, pool in self._bank.items() if pool}
-        allocation = self._enforce_floor(allocation, active_classes, self._floor)
 
         selected: dict[int, list] = {c: [] for c in self._bank.keys()}
         total_selected = 0
@@ -249,32 +181,13 @@ class UniformHerdingReplayBank(AbstractGhostBank):
                     pick = _herding_select(feats_all, quota)
                     if verbose:
                         print(f"  class {class_id}: pool={len(pool)} quota={quota} herding={time.time()-t_herd:.3f}s total={time.time()-t_class:.2f}s", flush=True)
-
+                
                 # NME should use the mean of the *selected* exemplars
                 class_mean = feats_all[pick].mean(dim=0)
                 self.class_means[class_id] = class_mean.cpu()
-
+                
                 selected[class_id] = [pool[i] for i in pick]
                 total_selected += len(selected[class_id])
-
-                # --- fixed-memory pruning ---
-                # Reseed the pool with this round's picks plus a bounded set
-                # of leftover (non-selected) candidates, so the NEXT rebuild
-                # still has real headroom to re-herd from, instead of
-                # re-herding its own previous output.
-                cap = max(quota, self._floor) * self._pool_multiplier
-                self._pool_caps[class_id] = cap
-                picked_set = set(pick)
-                leftover_slots = cap - len(pick)
-                if leftover_slots > 0:
-                    remaining_idx = [i for i in range(len(pool)) if i not in picked_set]
-                    self._rng.shuffle(remaining_idx)
-                    extra = [pool[i] for i in remaining_idx[:leftover_slots]]
-                else:
-                    extra = []
-                self._bank[class_id] = selected[class_id] + extra
-                self._seen_count[class_id] = len(self._bank[class_id])
-
         if verbose:
             print(f"[rebuild_selected] Done in {time.time()-t_rebuild_start:.2f}s. total_selected={total_selected}", flush=True)
 
@@ -291,21 +204,12 @@ class UniformHerdingReplayBank(AbstractGhostBank):
     def selected(self) -> dict[int, list]:
         return self._selected
 
-    def bank_size(self) -> int:
-        """Total raw examples currently retained across all classes — the
-        actual memory footprint. Should never exceed
-        pool_multiplier * total_budget once rebuild_selected has run once."""
-        return sum(len(v) for v in self._bank.values())
-
     def state_dict(self) -> dict:
         return {
             "bank": {c: list(pool) for c, pool in self._bank.items()},
             "selected": {c: list(pool) for c, pool in self._selected.items()},
             "total_budget": self._total_budget,
             "floor": self._floor,
-            "pool_multiplier": self._pool_multiplier,
-            "pool_caps": dict(self._pool_caps),
-            "seen_count": dict(self._seen_count),
         }
 
     def load_state_dict(self, state: dict) -> None:
@@ -313,10 +217,3 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         self._selected = {int(c): list(pool) for c, pool in state.get("selected", {}).items()}
         self._total_budget = state.get("total_budget", self._total_budget)
         self._floor = state.get("floor", self._floor)
-        self._pool_multiplier = state.get("pool_multiplier", self._pool_multiplier)
-        self._pool_caps = {int(c): v for c, v in state.get("pool_caps", {}).items()}
-        self._seen_count = {int(c): v for c, v in state.get("seen_count", {}).items()}
-        default_cap = max(self._floor, 1) * self._pool_multiplier
-        for c in self._bank:
-            self._pool_caps.setdefault(c, default_cap)
-            self._seen_count.setdefault(c, len(self._bank[c]))
