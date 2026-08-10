@@ -127,8 +127,16 @@ class UniformHerdingMethod(Method):
                         old_logits = self.old_model(x.to(dtype=old_dtype)).to(dtype=x.dtype)
 
                 t = self.kd_temperature
+                # Undo the margin head's target-class subtraction so the KD
+                # term compares the student's *cosine* old-class scores with
+                # the teacher's (the teacher snapshot ran in eval mode and
+                # never had a margin applied).  Without this, the KD loss
+                # sees a spurious margin * scale gap on the true class of
+                # every replayed sample and fights the margin head.
+                undo_margin = getattr(pl_module.model.fc, "unmargined_logits", None)
+                kd_logits = undo_margin(logits, y) if undo_margin is not None else logits
                 kd_loss = F.kl_div(
-                    F.log_softmax(logits[:, :num_old_classes].float() / t, dim=1),
+                    F.log_softmax(kd_logits[:, :num_old_classes].float() / t, dim=1),
                     F.softmax(old_logits.float() / t, dim=1),
                     reduction="batchmean",
                 ) * (t * t)

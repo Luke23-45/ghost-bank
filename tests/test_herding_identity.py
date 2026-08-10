@@ -28,6 +28,13 @@ ROTATION = torch.tensor(
     [[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]
 )
 
+# Non-orthogonal representation change (z component compressed).  Herding is
+# invariant under *orthogonal* transformations (distances to the running
+# mean target are preserved), so a plain rotation can never make the refresh
+# policy observable; an anisotropic transform changes the distances and the
+# greedy selection can pick different exemplars.
+REFRESH_TRANSFORM = torch.diag(torch.tensor([1.0, 1.0, 0.1]))
+
 
 class _RotatingModel(torch.nn.Module):
     """Maps each raw image to a fixed feature row via its constant value,
@@ -117,21 +124,30 @@ def test_uniform_herding_old_class_is_reselected_in_current_space():
     model = _RotatingModel(features, torch.eye(3))
     _run_task0(bank, model)
     task0_ranked = _identities(bank, 0)
+    # The pool keeps its full candidate set (cap = quota * pool_multiplier),
+    # so the next rebuild re-herds over every stored exemplar, not just the
+    # previously selected few.
+    assert len(bank._bank[0]) == 8
 
-    model.rotation = ROTATION
-    _run_task1(bank, model)
+    model.rotation = REFRESH_TRANSFORM
+    bank.start_task()
+    bank.store([(_image(float(i)), 2) for i in range(16, 24)])
+    bank.store([(_image(float(i)), 3) for i in range(24, 32)])
+    pre_rebuild_pool = [int(item[0][0, 0, 0].item()) for item in bank._bank[0]]
+    bank.rebuild_selected(model, allocation=TASK1_ALLOC, eval_transform=_identity_transform)
 
-    # Old class is re-selected from its stored exemplars in the current
+    # Old class is re-selected from its *full* stored pool in the current
     # feature space, not kept as a fixed prefix.
-    cands = torch.stack([features[i] for i in task0_ranked]) @ ROTATION.T
+    cands = torch.stack([features[i] for i in pre_rebuild_pool]) @ REFRESH_TRANSFORM.T
     expected_pick = _herding_select(cands, 2)
-    assert _identities(bank, 0) == [task0_ranked[i] for i in expected_pick]
-    # The refresh policy is observable: with this rotation the re-herded set
-    # differs from the iCaRL truncation of the original ranking.
+    assert _identities(bank, 0) == [pre_rebuild_pool[i] for i in expected_pick]
+    # The refresh policy is observable: with this anisotropic transform the
+    # re-herded set differs from the iCaRL truncation of the original ranking.
     assert _identities(bank, 0) != task0_ranked[:2]
     assert torch.allclose(bank.class_means[0], cands[expected_pick].mean(dim=0), atol=1e-6)
     assert sum(len(v) for v in bank.selected.values()) == BUDGET
-    assert all(len(v) == 0 for v in bank._current_pool.values())
+    # Fixed memory: pool footprint is bounded by pool_multiplier * total_budget.
+    assert sum(len(v) for v in bank._bank.values()) <= BUDGET * 3
 
 
 def test_icarl_new_classes_herded_once_from_full_pool():

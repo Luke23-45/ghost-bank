@@ -15,6 +15,7 @@ from src.methods.baseline import BaselineMethod
 from src.methods.static_bank import StaticBankMethod
 from src.methods.uniform_herding import UniformHerdingMethod
 from src.methods.uniform_herding.herding import UniformHerdingReplayBank
+from src.models.heads.cosine_margin import MarginCosineHead
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -262,6 +263,21 @@ class _RealForwardPl(torch.nn.Module):
         return self.model(x, targets=targets)
 
 
+class _MarginHeadModel(torch.nn.Module):
+    """ResNet-like model carrying the real cosine margin head."""
+
+    def __init__(self, in_dim: int, hidden: int, num_classes: int) -> None:
+        super().__init__()
+        self.backbone = torch.nn.Linear(in_dim, hidden)
+        self.fc = MarginCosineHead(hidden, num_classes, scale=30.0, margin=0.35)
+
+    def forward(self, x: torch.Tensor, targets: torch.Tensor | None = None) -> torch.Tensor:
+        return self.fc(self.backbone(x), targets)
+
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        return self.backbone(x)
+
+
 class TestUniformHerdingKD:
     def _model(self) -> _LinearHeadModel:
         torch.manual_seed(0)
@@ -319,3 +335,29 @@ class TestUniformHerdingKD:
         loss = method.compute_loss((x, y), pl, bank=bank)
         ce = F.cross_entropy(model(x), y)
         assert loss.item() > ce.item() + 1e-4
+
+    def test_kd_zero_with_margin_head_when_student_matches_teacher(self):
+        """KD must compare *un-margined* student scores to the teacher.
+
+        The margin head subtracts margin * scale from the target class during
+        training; if those margined logits fed the KD term, the loss would be
+        nonzero even when the student's cosine logits exactly match the
+        teacher's (a spurious gradient fighting the margin on old classes).
+        """
+        torch.manual_seed(0)
+        model = _MarginHeadModel(in_dim=8, hidden=8, num_classes=3)
+        method = UniformHerdingMethod(retrieval_budget=4, warmup_steps=0, kd_weight=1.0)
+        method.on_task_start(model, task_id=1)  # teacher == student, no drift
+        pl = _RealForwardPl(model)
+        bank = UniformHerdingReplayBank(num_classes=3, total_budget=20, seed=0)
+        x = torch.randn(4, 8)
+        y = torch.tensor([0, 1, 0, 2])
+
+        loss = method.compute_loss((x, y), pl, bank=bank)
+        ce = F.cross_entropy(model(x, targets=y), y)
+        assert torch.isclose(loss, ce, atol=1e-5)
+
+        with torch.no_grad():
+            model.backbone.weight.data += 1.0
+        loss_drifted = method.compute_loss((x, y), pl, bank=bank)
+        assert loss_drifted.item() > ce.item() + 1e-4

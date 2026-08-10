@@ -56,6 +56,26 @@ class MarginCosineHead(nn.Module):
 
         return logits
 
+    def unmargined_logits(
+        self, logits: torch.Tensor, targets: torch.Tensor
+    ) -> torch.Tensor:
+        """Recover the cosine logits the margin was subtracted from.
+
+        During training the target class's cosine similarity is reduced by
+        ``margin`` before scaling (see ``forward``), so training-time logits
+        are shifted by ``margin * scale`` at the true-class position.  When
+        the same logits feed knowledge distillation they must be undone:
+        the KD teacher snapshot ran in eval mode and never had a margin
+        applied, so comparing margined student scores against the teacher's
+        injects a spurious ``margin * scale`` gap on the true class and the
+        KD gradient fights the margin head on old classes.
+        """
+        if self.training and self.margin > 0.0 and targets is not None:
+            logits = logits.clone()
+            index = torch.arange(logits.size(0), device=logits.device)
+            logits[index, targets] += self.margin * self.scale
+        return logits
+
     def expand(self, num_new_classes: int) -> None:
         old_out = self.num_classes
         new_out = old_out + num_new_classes

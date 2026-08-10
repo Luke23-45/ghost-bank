@@ -33,3 +33,27 @@ def test_rebuild_selected():
     assert len(bank.selected[0]) == 2
     assert len(bank.selected[1]) == 2
     assert sum(len(pool) for pool in bank.selected.values()) == 4
+
+
+def test_rebuild_selected_default_allocation_covers_expanded_classes():
+    """``allocation=None`` must herd every class the bank currently knows.
+
+    The bank is expanded as tasks arrive; defaulting to the *initial* class
+    count would silently assign quota 0 to every later-introduced class and
+    they would never be re-herded.
+    """
+    bank = UniformHerdingReplayBank(num_classes=4, total_budget=6, seed=0)
+    bank.store(_make_examples([0, 0, 0, 1, 1, 1]))
+    bank.expand(4)  # bank now knows classes 0..7
+    for c in range(2, 8):
+        bank.store(_make_examples([c, c]))
+
+    stats = bank.rebuild_selected(
+        model=DummyModel(),
+        allocation=None,
+        eval_transform=None,
+    )
+
+    assert set(bank.class_means.keys()) == set(range(8))
+    assert stats["total"] == sum(len(pool) for pool in bank.selected.values())
+    assert sum(len(pool) for pool in bank.selected.values()) == len(bank.selected)  # floor: 1 per class

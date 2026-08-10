@@ -92,8 +92,11 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         self._selection = selection
 
         # --- fixed-memory bookkeeping ---
+        # Caps and default allocation always derive from the *live* class
+        # count (``len(self._bank)``), never from the initial ``num_classes``:
+        # expand() adds classes over time and the initial count goes stale.
         self._pool_multiplier = max(1, pool_multiplier)
-        default_cap = max(self._floor, self._total_budget // max(1, self._num_classes)) * self._pool_multiplier
+        default_cap = max(self._floor, self._total_budget // max(1, len(self._bank))) * self._pool_multiplier
         self._pool_caps: dict[int, int] = {c: default_cap for c in self._bank}
         self._seen_count: dict[int, int] = {c: 0 for c in self._bank}
         self._quota_known: set[int] = set()
@@ -150,7 +153,10 @@ class UniformHerdingReplayBank(AbstractGhostBank):
 
     def expand(self, num_new_classes: int) -> None:
         max_existing = max(self._bank.keys()) if self._bank else -1
-        default_cap = max(self._floor, self._total_budget // max(1, self._num_classes)) * self._pool_multiplier
+        default_cap = max(
+            self._floor,
+            self._total_budget // max(1, len(self._bank) + num_new_classes),
+        ) * self._pool_multiplier
         for c in range(max_existing + 1, max_existing + 1 + num_new_classes):
             if c not in self._bank:
                 self._bank[c] = []
@@ -158,8 +164,9 @@ class UniformHerdingReplayBank(AbstractGhostBank):
                 self._selected[c] = []
             self._pool_caps.setdefault(c, default_cap)
             self._seen_count.setdefault(c, 0)
-        # NOTE: self._num_classes is intentionally left untouched here — see
-        # the flag about it below the code block before relying on expand().
+        # NOTE: the default cap above is only a pre-rebuild fallback; the
+        # real per-class cap (quota * pool_multiplier) is assigned inside
+        # rebuild_selected once the class's budget-derived quota is known.
 
     @staticmethod
     def _enforce_floor(allocation: list[int], active_classes: set[int], floor: int) -> list[int]:
@@ -204,8 +211,12 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         verbose: bool = False,
     ) -> dict[str, float]:
         if allocation is None:
+            # Default to the *currently known* classes (the bank is expanded
+            # as tasks arrive).  Allocating over the initial ``num_classes``
+            # would silently give every later-introduced class quota 0, so
+            # they would never be re-herded.
             allocation = allocate_uniform_fixed_total(
-                num_classes=self._num_classes,
+                num_classes=len(self._bank),
                 total_budget=self._total_budget,
                 floor=self._floor,
             )
@@ -329,7 +340,7 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         self._pool_caps = {int(c): v for c, v in state.get("pool_caps", {}).items()}
         self._seen_count = {int(c): v for c, v in state.get("seen_count", {}).items()}
         self._quota_known = set(int(c) for c in state.get("quota_known", []))
-        default_cap = max(self._floor, self._total_budget // max(1, self._num_classes)) * self._pool_multiplier
+        default_cap = max(self._floor, self._total_budget // max(1, len(self._bank))) * self._pool_multiplier
         for c in self._bank:
             self._pool_caps.setdefault(c, default_cap)
             self._seen_count.setdefault(c, len(self._bank[c]))
