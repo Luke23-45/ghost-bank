@@ -93,9 +93,10 @@ class UniformHerdingReplayBank(AbstractGhostBank):
 
         # --- fixed-memory bookkeeping ---
         self._pool_multiplier = max(1, pool_multiplier)
-        default_cap = max(self._floor, 1) * self._pool_multiplier
+        default_cap = max(self._floor, self._total_budget // max(1, self._num_classes)) * self._pool_multiplier
         self._pool_caps: dict[int, int] = {c: default_cap for c in self._bank}
         self._seen_count: dict[int, int] = {c: 0 for c in self._bank}
+        self._quota_known: set[int] = set()
 
     @staticmethod
     def _to_tensor_label(y: object) -> torch.Tensor:
@@ -111,10 +112,20 @@ class UniformHerdingReplayBank(AbstractGhostBank):
 
         Keeps `_bank[cid]` at or below `_pool_caps[cid]` at all times,
         including mid-task, with each item seen so far having equal
-        probability of surviving in the pool.
+        probability of surviving in the pool. Classes that have never been
+        through a `rebuild_selected` call are uncapped so they keep their
+        full raw stream until a budget-derived quota is assigned.
         """
-        cap = self._pool_caps.get(cid, max(self._floor, 1) * self._pool_multiplier)
         pool = self._bank[cid]
+        if cid not in self._quota_known:
+            # First-ever exposure for this class: its real quota isn't known
+            # yet, so don't cap it -- exactly like the original code. Capping
+            # here is what silently thinned pools to floor*multiplier before
+            # rebuild_selected ever got a chance to compute the real quota.
+            pool.append(item)
+            self._seen_count[cid] = self._seen_count.get(cid, 0) + 1
+            return
+        cap = self._pool_caps.get(cid, max(self._floor, 1) * self._pool_multiplier)
         self._seen_count[cid] = self._seen_count.get(cid, 0) + 1
         k = self._seen_count[cid]
         if len(pool) < cap:
@@ -139,7 +150,7 @@ class UniformHerdingReplayBank(AbstractGhostBank):
 
     def expand(self, num_new_classes: int) -> None:
         max_existing = max(self._bank.keys()) if self._bank else -1
-        default_cap = max(self._floor, 1) * self._pool_multiplier
+        default_cap = max(self._floor, self._total_budget // max(1, self._num_classes)) * self._pool_multiplier
         for c in range(max_existing + 1, max_existing + 1 + num_new_classes):
             if c not in self._bank:
                 self._bank[c] = []
@@ -263,6 +274,7 @@ class UniformHerdingReplayBank(AbstractGhostBank):
                 # re-herding its own previous output.
                 cap = max(quota, self._floor) * self._pool_multiplier
                 self._pool_caps[class_id] = cap
+                self._quota_known.add(class_id)
                 picked_set = set(pick)
                 leftover_slots = cap - len(pick)
                 if leftover_slots > 0:
@@ -305,6 +317,7 @@ class UniformHerdingReplayBank(AbstractGhostBank):
             "pool_multiplier": self._pool_multiplier,
             "pool_caps": dict(self._pool_caps),
             "seen_count": dict(self._seen_count),
+            "quota_known": sorted(self._quota_known),
         }
 
     def load_state_dict(self, state: dict) -> None:
@@ -315,7 +328,8 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         self._pool_multiplier = state.get("pool_multiplier", self._pool_multiplier)
         self._pool_caps = {int(c): v for c, v in state.get("pool_caps", {}).items()}
         self._seen_count = {int(c): v for c, v in state.get("seen_count", {}).items()}
-        default_cap = max(self._floor, 1) * self._pool_multiplier
+        self._quota_known = set(int(c) for c in state.get("quota_known", []))
+        default_cap = max(self._floor, self._total_budget // max(1, self._num_classes)) * self._pool_multiplier
         for c in self._bank:
             self._pool_caps.setdefault(c, default_cap)
             self._seen_count.setdefault(c, len(self._bank[c]))
