@@ -61,9 +61,17 @@ class UniformHerdingReplayBank(AbstractGhostBank):
     Two nested, both-bounded budgets:
       - `total_budget`: size of `_selected`, the set actually replayed.
       - `pool_multiplier * quota` per class: size of `_bank`, the candidate
-        pool `rebuild_selected` re-herds from. Total footprint is bounded by
-        `pool_multiplier * total_budget` at all times, including mid-task
-        (via reservoir-bounded `store()`), not just at rebuild boundaries.
+        pool `rebuild_selected` re-herds from. At every rebuild boundary the
+        total footprint is bounded by `pool_multiplier * total_budget`.
+
+    Mid-task the bound holds for every class that has been through a rebuild
+    (its pool stays at `quota * pool_multiplier` via reservoir-bounded
+    `store()`); classes awaiting their *first* rebuild deliberately keep
+    their full raw stream instead — capping them early would thin the pool
+    below the quota they will actually get, so the first herding would have
+    no headroom. The worst-case mid-task footprint is therefore
+    `pool_multiplier * total_budget` plus the full streams of at most
+    `classes_per_task` classes.
     """
 
     def __init__(
@@ -315,8 +323,10 @@ class UniformHerdingReplayBank(AbstractGhostBank):
 
     def bank_size(self) -> int:
         """Total raw examples currently retained across all classes — the
-        actual memory footprint. Should never exceed
-        pool_multiplier * total_budget once rebuild_selected has run once."""
+        actual memory footprint.  Bounded by
+        `pool_multiplier * total_budget` at rebuild boundaries; mid-task,
+        classes that have not yet been through their first rebuild keep
+        their full stream (see the class docstring)."""
         return sum(len(v) for v in self._bank.values())
 
     def state_dict(self) -> dict:

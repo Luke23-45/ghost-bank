@@ -120,3 +120,38 @@ class TestHerdingReplayBank:
         assert len(bank.selected[0]) == 1
         assert len(bank.selected[1]) == 1
         assert sum(len(pool) for pool in bank.selected.values()) == 2
+
+    def test_ten_task_trajectory_documented_memory_invariant(self):
+        """Locks the docstring's invariant: the selected set equals the
+        fixed budget at every rebuild boundary, the pool is bounded by
+        multiplier * total_budget at boundaries, and mid-task the footprint
+        exceeds that only by the full streams of classes awaiting their
+        first rebuild (at most classes_per_task * stream)."""
+        bank = UniformHerdingReplayBank(
+            num_classes=10,
+            total_budget=2000,
+            seed=42,
+            pool_multiplier=3,
+        )
+        idx = 0
+        for task in range(10):
+            if task > 0:
+                bank.expand(10)
+            bank.start_task()
+            for c in range(10 * task, 10 * (task + 1)):
+                examples = [
+                    (torch.full((3, 8, 8), float(i % 7 + 1)), c)
+                    for i in range(450)
+                ]
+                bank.store(
+                    examples,
+                    raw_indices=torch.arange(idx, idx + 450, dtype=torch.long),
+                )
+                idx += 450
+            assert bank.bank_size() <= 3 * 2000 + 10 * 450
+            stats = bank.rebuild_selected(model=DummyModel(), allocation=None)
+            assert stats["total"] == 2000
+            assert sum(len(v) for v in bank.selected.values()) == 2000
+            assert bank.bank_size() <= 3 * 2000
+        sizes = {c: len(v) for c, v in bank.selected.items()}
+        assert all(size == 20 for size in sizes.values())
