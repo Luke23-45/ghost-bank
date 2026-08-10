@@ -57,7 +57,18 @@ def _herding_select(features: torch.Tensor, budget: int) -> list[int]:
 
 
 class UniformHerdingReplayBank(AbstractGhostBank):
-    """Fixed-total replay bank that re-selects exemplars with herding."""
+    """Fixed-total replay bank that re-selects exemplars with herding.
+
+    The active bank contains only the selected exemplars from completed tasks.
+    Examples from the current task are held in a transient candidate pool until
+    the task-boundary rebuild; that pool is discarded immediately afterward.
+
+    This is the proposed method's memory: after every task, the exemplar set of
+    every observed class is rebuilt in the current feature space.  Old classes
+    are re-selected from their currently stored exemplars combined with the
+    transient current-task pool; the pool is discarded after selection, so
+    persistent replay storage never exceeds the fixed budget ``M``.
+    """
 
     def __init__(
         self,
@@ -75,6 +86,7 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         excluded = set(exclude_classes) if exclude_classes is not None else set()
         self._bank: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
         self._selected: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
+        self._current_pool: dict[int, list] = {c: [] for c in range(num_classes) if c not in excluded}
         self.class_means: dict[int, torch.Tensor] = {}
         self._seen_indices: set[int] = set()
         self._rng = random.Random(seed)
@@ -91,6 +103,7 @@ class UniformHerdingReplayBank(AbstractGhostBank):
 
     def start_task(self) -> None:
         self._seen_indices.clear()
+        self._current_pool = {c: [] for c in self._bank}
 
     def store(self, examples: list, raw_indices: torch.Tensor | None = None) -> None:
         indices = raw_indices.tolist() if raw_indices is not None else None
@@ -102,8 +115,8 @@ class UniformHerdingReplayBank(AbstractGhostBank):
                 self._seen_indices.add(sample_idx)
             y = self._to_tensor_label(y)
             cid = _to_int(y)
-            if cid in self._bank:
-                self._bank[cid].append((x, y))
+            if cid in self._current_pool:
+                self._current_pool[cid].append((x, y))
 
     def query(self, budget: int, **kwargs) -> list:
         if budget <= 0:
@@ -117,6 +130,8 @@ class UniformHerdingReplayBank(AbstractGhostBank):
                 self._bank[c] = []
             if c not in self._selected:
                 self._selected[c] = []
+            if c not in self._current_pool:
+                self._current_pool[c] = []
 
     def rebuild_selected(
         self,
@@ -128,8 +143,12 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         verbose: bool = False,
     ) -> dict[str, float]:
         if allocation is None:
+            # Default to the *currently known* classes (the bank is expanded
+            # as tasks arrive).  Allocating over the initial ``num_classes``
+            # would silently give every later-introduced class quota 0, so
+            # they would never be selected.
             allocation = allocate_uniform_fixed_total(
-                num_classes=self._num_classes,
+                num_classes=len(self._bank),
                 total_budget=self._total_budget,
                 floor=self._floor,
             )
@@ -142,12 +161,16 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         t_rebuild_start = time.time()
         if verbose:
             print(f"[rebuild_selected] Starting. allocation len={len(allocation)}, bank keys={sorted(self._bank.keys())}", flush=True)
-            for cid, pool in self._bank.items():
-                print(f"  bank[{cid}] pool_size={len(pool)}", flush=True)
+            for cid in self._bank:
+                print(
+                    f"  class {cid}: active={len(self._bank[cid])} "
+                    f"current={len(self._current_pool.get(cid, []))}",
+                    flush=True,
+                )
 
         with torch.inference_mode():
             for class_id, quota in enumerate(allocation):
-                pool = self._bank.get(class_id, [])
+                pool = self._bank.get(class_id, []) + self._current_pool.get(class_id, [])
                 if quota <= 0 or not pool:
                     continue
                 classes_used += 1
@@ -191,7 +214,11 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         if verbose:
             print(f"[rebuild_selected] Done in {time.time()-t_rebuild_start:.2f}s. total_selected={total_selected}", flush=True)
 
+        # Only the selected exemplars survive the task boundary. The current
+        # task pool is transient and must not become an unbounded archive.
+        self._bank = selected
         self._selected = selected
+        self._current_pool = {c: [] for c in selected}
         return {
             "classes": classes_used,
             "total": total_selected,
@@ -208,12 +235,36 @@ class UniformHerdingReplayBank(AbstractGhostBank):
         return {
             "bank": {c: list(pool) for c, pool in self._bank.items()},
             "selected": {c: list(pool) for c, pool in self._selected.items()},
+            "current_pool": {c: list(pool) for c, pool in self._current_pool.items()},
+            "class_means": {c: mean.clone() for c, mean in self.class_means.items()},
+            "seen_indices": list(self._seen_indices),
             "total_budget": self._total_budget,
             "floor": self._floor,
         }
 
     def load_state_dict(self, state: dict) -> None:
-        self._bank = {int(c): list(pool) for c, pool in state["bank"].items()}
-        self._selected = {int(c): list(pool) for c, pool in state.get("selected", {}).items()}
+        bank = {int(c): list(pool) for c, pool in state["bank"].items()}
+        selected = {int(c): list(pool) for c, pool in state.get("selected", {}).items()}
+        current_pool = {
+            int(c): list(pool)
+            for c, pool in state.get("current_pool", {}).items()
+        }
+        self.class_means = {
+            int(c): mean.clone()
+            for c, mean in state.get("class_means", {}).items()
+        }
+        self._seen_indices = set(int(i) for i in state.get("seen_indices", []))
+        self._selected = selected
+        if "current_pool" in state:
+            self._bank = bank
+            self._current_pool = current_pool
+        elif selected:
+            # Older checkpoints stored the unbounded candidate archive in
+            # ``bank``. Resume them from their bounded selected state.
+            self._bank = selected
+            self._current_pool = {c: [] for c in selected}
+        else:
+            self._bank = bank
+            self._current_pool = {c: [] for c in bank}
         self._total_budget = state.get("total_budget", self._total_budget)
         self._floor = state.get("floor", self._floor)
