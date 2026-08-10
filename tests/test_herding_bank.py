@@ -20,7 +20,7 @@ def _make_examples(labels: list[int]) -> list[tuple[torch.Tensor, int]]:
     return examples
 
 
-def test_rebuild_selected_and_query():
+def test_rebuild_selected():
     bank = UniformHerdingReplayBank(num_classes=3, total_budget=6, seed=0)
     bank.store(_make_examples([0, 0, 0, 1, 1, 1]))
     stats = bank.rebuild_selected(
@@ -32,4 +32,4 @@ def test_rebuild_selected_and_query():
     assert stats["total"] == 4
     assert len(bank.selected[0]) == 2
     assert len(bank.selected[1]) == 2
-    assert bank.query(3)
+    assert sum(len(pool) for pool in bank.selected.values()) == 4

@@ -101,7 +101,7 @@ class TestStaticReplayBank:
 
 
 class TestHerdingReplayBank:
-    def test_rebuild_selected_and_query(self):
+    def test_rebuild_selected(self):
         bank = UniformHerdingReplayBank(num_classes=3, total_budget=6, seed=0)
         bank.store([
             (torch.full((3, 4, 4), 1.0), 0),
@@ -119,4 +119,4 @@ class TestHerdingReplayBank:
         assert stats["total"] == 2
         assert len(bank.selected[0]) == 1
         assert len(bank.selected[1]) == 1
-        assert bank.query(2)
+        assert sum(len(pool) for pool in bank.selected.values()) == 2

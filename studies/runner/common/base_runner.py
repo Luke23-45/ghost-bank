@@ -193,6 +193,7 @@ def create_method(
             kd_weight=mc.get("kd_weight", 0.0),
             kd_temperature=mc.get("kd_temperature", 2.0),
             predict_mode=mc.get("predict_mode", "nme"),
+            seed=int(cfg.get("data", {}).get("seed", 0) or 0),
         )
 
     if name == "icarl":

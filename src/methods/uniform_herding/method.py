@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import copy
+import random
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from src.bank.core.base import AbstractGhostBank
+from src.bank.core.retrieval import sample_uniform
 from src.methods.base import Method, MethodContext
 from src.methods.nme import nme_predict
 from src.methods.static_bank.method import _augment_replay
@@ -34,6 +36,7 @@ class UniformHerdingMethod(Method):
         kd_weight: float = 0.0,
         kd_temperature: float = 2.0,
         predict_mode: str = "nme",
+        seed: int = 0,
     ) -> None:
         super().__init__()
         self.retrieval_budget = retrieval_budget
@@ -45,7 +48,19 @@ class UniformHerdingMethod(Method):
             raise ValueError(
                 f"predict_mode must be 'nme' or 'head', got {predict_mode!r}"
             )
+        self._rng = random.Random(seed)
         self.old_model = None
+
+    def _retrieve_replay(self, bank: AbstractGhostBank) -> list:
+        """Sample replay exemplars for the current training step.
+
+        The herding bank's replay set is ``bank.selected`` (fixed between
+        rebuilds); legacy banks expose a per-step ``query`` instead.
+        """
+        pools = getattr(bank, "selected", None)
+        if pools is not None:
+            return sample_uniform(pools, self.retrieval_budget, self._rng)
+        return bank.query(budget=self.retrieval_budget)
 
     def on_task_start(self, model: nn.Module, task_id: int) -> None:
         """Cache the model before the head is expanded for KD distillation."""
@@ -75,7 +90,7 @@ class UniformHerdingMethod(Method):
             bank.store([(x_i.clone(), y_i) for x_i, y_i in zip(x_cpu, y_labels)])
 
         if pl_module.global_step >= self.warmup_steps:
-            replay_items = bank.query(budget=self.retrieval_budget)
+            replay_items = self._retrieve_replay(bank)
             replay_x = _augment_replay(
                 replay_items,
                 transform=context.train_transform if context is not None else None,

@@ -8,7 +8,6 @@ import torch
 
 from src.bank.core.allocator import allocate_uniform_fixed_total
 from src.bank.core.base import AbstractGhostBank, _to_int
-from src.bank.core.retrieval import sample_uniform
 
 
 def _to_chw(raw: torch.Tensor) -> torch.Tensor:

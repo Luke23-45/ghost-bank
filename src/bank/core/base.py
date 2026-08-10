@@ -20,13 +20,8 @@ class AbstractGhostBank(ABC):
         """Store a list of (features, label) examples in the bank."""
         ...
 
-    @abstractmethod
-    def query(self, budget: int, **kwargs) -> list:
-        """Retrieve up to ``budget`` examples from the bank."""
-        ...
-
     def freeze(self) -> None:
-        """Prevent further storage.  Query still works."""
+        """Prevent further storage. Retrieval still works."""
         self._frozen = True
 
     def unfreeze(self) -> None:

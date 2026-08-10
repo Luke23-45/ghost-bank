@@ -180,9 +180,9 @@ class TestUniformHerdingMethod:
         context = _make_context()
 
         method.compute_loss(batch, pl_module, bank=bank, context=context)
-        first_total = sum(len(pool) for pool in bank._current_pool.values())
+        first_total = sum(len(pool) for pool in bank._bank.values())
         method.compute_loss(batch, pl_module, bank=bank, context=context)
-        second_total = sum(len(pool) for pool in bank._current_pool.values())
+        second_total = sum(len(pool) for pool in bank._bank.values())
 
         assert first_total == second_total
 
