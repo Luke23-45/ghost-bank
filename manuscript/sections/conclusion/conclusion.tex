@@ -1,19 +1,17 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-This study examined how replay-system choices interact under a fixed-total
-exemplar budget for CIFAR-100 class-incremental learning.  Holding the protocol
-and resource budget fixed made it possible to separate exemplar selection,
-distillation, classifier head, and evaluation readout.  The matched ablations
-show that nearest-mean exemplar evaluation and herding are the largest measured
-contributors to the reference configuration's accuracy--forgetting trade-off.
-Distillation primarily improves retention, whereas the memory sweep has a
-larger effect than the tested changes in retrieval budget.
+This study separates the design choices of a fixed-memory exemplar replay
+system. In the evaluated protocol, the prediction rule produces the largest
+observed component difference, herding improves both accuracy and retention
+relative to random selection, and distillation improves retention with little
+change in final average accuracy. Stored memory has a larger observed effect
+than the tested retrieval range.
 
-For the measured setting, a defensible replay design is to allocate memory
-across all observed classes, rebuild representative exemplars in the current
-feature space, train with distillation, and evaluate with the corresponding NME
-prototypes.  This is a protocol-specific recommendation, not a general ranking
-of class-incremental methods.  The next empirical step is to test the same
-component-level analysis across class orders, datasets, architectures, and
-larger memory ranges.
+For this protocol, the configuration supported by the measurements allocates
+memory across observed classes, rebuilds representative exemplars in the
+current feature space, trains with distillation, and predicts with the
+corresponding NME prototypes. These findings rank components within the
+evaluated protocol. The next step is to run the same matched component analysis
+across additional class orders, datasets, architectures, and memory ranges to
+test whether that ranking transfers.

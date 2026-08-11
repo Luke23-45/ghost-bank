@@ -2,9 +2,9 @@
 \label{sec:method}
 
 We study class-incremental learning on CIFAR-100 under a fixed memory
-budget.  Training proceeds over tasks \(t=0,\ldots,T-1\).  Each task
-introduces a disjoint set of \(C_{\mathrm{new}}\) classes, and evaluation after
-task \(t\) is performed over the tasks seen so far without using task identity.
+budget, where training proceeds over tasks \(t=0,\ldots,T-1\).  Each task
+introduces a disjoint set of \(C_{\mathrm{new}}\) classes; evaluation after
+task \(t\) covers all classes seen so far without task identity.
 In all main experiments, \(T=10\) and \(C_{\mathrm{new}}=10\).  The CIFAR-100
 classes are permuted with split seed 13 and then remapped to contiguous
 internal labels; task \(t\) contains internal classes
@@ -27,10 +27,9 @@ s\left\langle \bar f_\theta(x),\bar w_j\right\rangle - sm, & j=y,\\
 s\left\langle \bar f_\theta(x),\bar w_j\right\rangle, & j\neq y,
 \end{cases}
 \]
-where \(\bar u=u/\|u\|_2\).  We use \(s=30\) and \(m=0.35\).  When a new task is
-introduced, the classifier head is expanded by 10 rows.  For tasks after the
-first, the new rows are imprinted from the normalized class-mean features of
-the current task before optimization.
+where \(\bar u=u/\|u\|_2\).  We use \(s=30\) and \(m=0.35\).  When a new task arrives, the classifier head grows by 10 rows.  For tasks after the
+first, these rows are imprinted from the normalized class-mean features of
+the current task before optimization begins.
 
 Training uses SGD with learning rate 0.1, momentum 0.9, weight decay
 \(5\times10^{-4}\), batch size 128, gradient clipping at 1.0, mixed precision,
@@ -56,48 +55,41 @@ where \(c_i\) denotes the \(i\)-th internal class identifier.  Thus the selected
 sets sum exactly to \(M\), and every observed class has a positive quota in the
 reported budget range because \(M\ge C_t\) for every task.
 
-During task \(t\), each raw training example is inserted once into a transient
-current-task candidate pool. The stored item is the unaugmented image and its
-internal label. Persistent replay memory contains only selected exemplars from
-completed tasks. After training task \(t\), and before evaluation, the method
-combines the active exemplars of old classes with the current-task candidate
-pool and rebuilds the selected exemplar set in the current feature space. For
-class \(c\), let
+During task \(t\), each raw training example enters the class pool
+\(\mathcal{P}_c^{(t)}\) exactly once; the stored item is the unaugmented image
+and its internal label.  After training on task \(t\) and before evaluation,
+the system rebuilds the selected exemplar set in the current feature space.  For class \(c\), let
 \[
-\mathcal{Q}_c^{(t)}
-=\mathcal{E}_c^{(t-1)}\cup\mathcal{P}_{c,\mathrm{cur}}^{(t)},
-\qquad
-\mu_c^{(t)}=\frac{1}{|\mathcal{Q}_c^{(t)}|}
-\sum_{x\in\mathcal{Q}_c^{(t)}} f_\theta(x)
+\mu_c^{(t)}=\frac{1}{|\mathcal{P}_c^{(t)}|}
+\sum_{x\in\mathcal{P}_c^{(t)}} f_\theta(x)
 \]
-be the candidate set and its mean feature under the current network. If
-\(q_c^{(t)}\ge |\mathcal{Q}_c^{(t)}|\), all candidates are selected.
+be the mean feature of the stored pool under the current network.  If
+\(q_c^{(t)}\ge |\mathcal{P}_c^{(t)}|\), all examples in the pool are selected.
 Otherwise, exemplars \(x_1,\ldots,x_q\), with \(q=q_c^{(t)}\), are chosen
 greedily.  With \(S_0=0\), the \(k\)-th exemplar is
 \[
 x_k \in
-\operatorname*{argmin}_{x\in\mathcal{Q}_c^{(t)}\setminus\{x_1,\ldots,x_{k-1}\}}
+\operatorname*{argmin}_{x\in\mathcal{P}_c^{(t)}\setminus\{x_1,\ldots,x_{k-1}\}}
 \left\|f_\theta(x)-\left(k\mu_c^{(t)}-S_{k-1}\right)\right\|_2^2,
 \qquad
 S_k=S_{k-1}+f_\theta(x_k).
 \]
-The prototype stored for nearest-mean classification is the mean feature of the
+The prototype stored for nearest-mean prediction is the mean feature of the
 selected exemplars,
 \[
 \hat\mu_c^{(t)}=\frac{1}{q}\sum_{k=1}^{q} f_\theta(x_k).
 \]
-Rebuilding is performed after every task, including task 0. Only selected
-exemplars survive the boundary; the current-task candidate pool is discarded,
-so persistent replay storage never exceeds the total budget \(M\).
+The exemplar set is rebuilt after every task, including task 0, so old
+classes may receive different exemplars once the representation changes.
 
 \subsection{Replay and Distillation}
 \label{subsec:replay-distillation}
 
-For \(t=0\), training uses only the current task minibatches.  For \(t\ge1\),
-each current-task minibatch is augmented with \(b\) replay exemplars sampled
-with replacement from the selected memory of previous tasks.  Sampling is
-uniform over stored exemplar items, not uniform over classes.  Retrieved raw
-images are re-augmented before being concatenated with the current minibatch.
+For \(t=0\), training uses only the current-task minibatches.  For \(t\ge1\),
+each minibatch is augmented with \(b\) replay exemplars sampled with
+replacement from the selected memory of previous tasks---uniform over stored
+items, not over classes.  Retrieved images are re-augmented before
+concatenation with the current minibatch.
 The reference uses \(M=2000\) and \(b=64\).
 
 The optimization loss is cross-entropy on the expanded label space plus
@@ -119,14 +111,14 @@ z_{0:C_{t-1}-1}(x)/T_{\mathrm{KD}}
 \right).
 \end{aligned}
 \]
-and for \(t=0\) the distillation term is absent.  The reference setting uses
-\(\lambda=1.0\) and \(T_{\mathrm{KD}}=2.0\).  Distillation is applied only to
-classes seen before the current task.
+and for \(t=0\) the distillation term is absent.  The reference uses
+\(\lambda=1.0\) and \(T_{\mathrm{KD}}=2.0\); the KL term covers only old-task
+logits.
 
 \subsection{Prediction}
 \label{subsec:prediction}
 
-The reference uses nearest-mean exemplar (NME) classification at evaluation
+The reference uses nearest-mean exemplar (NME) prediction at evaluation
 time.  Given the final representation after task \(T-1\), prediction is
 \[
 \hat y(x)=
@@ -138,24 +130,24 @@ time.  Given the final representation after task \(T-1\), prediction is
 Because both query features and exemplar means are normalized, this rule is
 equivalent to maximum cosine similarity to the selected-exemplar prototype.
 
+\input{data/diagram/system_overview.tex}
+
 \subsection{Baselines and Ablations}
 \label{subsec:baselines-ablations}
 
-The study compares the reference method against two baselines and eight targeted
-variants.  The first baseline is an iCaRL-style replay method using herding,
+We compare the reference against two baselines and eight ablation variants.  The first baseline is an iCaRL-style replay method using herding,
 nearest-mean exemplar prediction, and binary cross-entropy distillation on old
 class outputs.  The second baseline is a static replay bank: it stores raw
 examples with the same task-boundary fixed-total quotas, uses random
 replacement within each class pool, and trains with uniformly sampled replay
 and cross-entropy.
 
-Component ablations change one design choice at a time relative to the locked
-reference configuration: removing distillation, evaluating with head logits
-instead of nearest-mean exemplars, replacing the cosine-margin head with a
-linear head, and replacing herding selection with random selection.  Resource
-sensitivity is measured by varying total memory \(M\in\{500,2000,4000\}\) and
-retrieval budget \(b\in\{32,64,128\}\), with \(M=2000\) and \(b=64\) as the
-reference point.
+Each ablation changes one design choice relative to the locked reference:
+removing distillation, evaluating with head logits instead of nearest-mean
+exemplars, replacing the cosine-margin head with a linear head, or replacing
+herding with random selection.  We measure resource sensitivity by varying
+total memory \(M\in\{500,2000,4000\}\) and retrieval budget
+\(b\in\{32,64,128\}\), with \(M=2000\) and \(b=64\) as the reference point.
 
 \subsection{Evaluation Metrics}
 \label{subsec:evaluation-metrics}
