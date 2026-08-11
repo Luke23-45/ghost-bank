@@ -43,7 +43,7 @@ MAIN_OUT = C.PAPER_MAIN_FIGURES_DIR
 
 # ── Fig 1: per-task final accuracy ───────────────────────────────────
 def fig1_per_task_accuracy(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
-    """2 panels: (a) baselines B1/B2/B3; (b) reference vs a1-a4.
+    """2 panels: (a) baselines B0/B1/B2/B3; (b) reference vs a1-a4.
 
     A single figure-level legend sits below both panels so every entry
     appears exactly once.  The reference line (B3 / uniform herding) is
@@ -259,7 +259,7 @@ def fig3_resource_sensitivity(runs: Dict[str, RunResult], out_dir: Path) -> List
 
 # ── Fig 4: accuracy vs forgetting scatter with error bars ────────────
 def fig4_acc_forgetting_scatter(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
-    """All 11 runs: forgetting (x) vs average accuracy (y) trade-off space."""
+    """All 12 runs: forgetting (x) vs average accuracy (y) trade-off space."""
     with apply_thesis_style():
         fig, ax = create_figure(width="double", aspect=0.9)
         
@@ -314,7 +314,7 @@ def fig4_acc_forgetting_scatter(runs: Dict[str, RunResult], out_dir: Path) -> Li
         
         # We want 3 columns: Core, Ablations, Sweeps
         target_cols = [
-            ["Uniform herding (Reference)", "iCaRL", "Static bank", ""],
+            ["Uniform herding (Reference)", "No replay", "iCaRL", "Static bank"],
             ["Ref. without KD", "Ref. head-logit eval", "Ref. linear head", "Ref. random selection"],
             ["Memory 500", "Memory 4000", "Retrieval 32", "Retrieval 128"]
         ]

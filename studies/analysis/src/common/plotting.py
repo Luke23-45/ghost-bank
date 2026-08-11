@@ -130,11 +130,15 @@ def plot_per_task_curve(
     stds = run.final_task_stds()
     xs = np.asarray(TASK_TICKS, dtype=float)
 
+    # Balance visual weight: a square (s) has more area than a circle/diamond of the same size.
+    ms = 5.5 if marker == "s" else 7
+
     if band:
         ax.fill_between(xs, means - stds, means + stds, color=color, alpha=0.20, linewidth=0)
     (line,) = ax.plot(
         xs, means,
-        color=color, marker=marker, markersize=7,
+        color=color, marker=marker, markersize=ms,
+        markeredgecolor="white", markeredgewidth=0.6,
         linewidth=1.8, label=resolved_label,
     )
     ax.set_xticks(TASK_TICKS)
@@ -328,8 +332,10 @@ def plot_forgetting_by_age(
     else:
         resolved_label = label
 
-    (line,) = ax.plot(xs, f, color=color, marker=marker, markersize=6, linewidth=linewidth,
-            label=resolved_label, alpha=alpha, zorder=3)
+    ms = 5.5 if marker == "s" else 6
+    (line,) = ax.plot(xs, f, color=color, marker=marker, markersize=ms,
+            markeredgecolor="white", markeredgewidth=0.6,
+            linewidth=linewidth, label=resolved_label, alpha=alpha, zorder=3)
     if fill_gradient:
         for j in TASK_TICKS:
             ax.axvspan(j - 0.4, j + 0.4, color=AGE_CMAP((j + 1) / len(TASK_TICKS)), alpha=0.06)

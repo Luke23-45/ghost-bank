@@ -236,7 +236,7 @@ def table_A1_protocol(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
                       f"{train_cfg.get('gradient_clip_val')}, no LR schedule, "
                       f"warmup {method_cfg.get('warmup_steps')}"],
         ["Epochs per task", f"{train_cfg.get('max_epochs')} configured; "
-                            f"{ref.epochs_per_task():g} recorded for all 33 seeds "
+                            f"{ref.epochs_per_task():g} recorded for all 36 seeds "
                             f"(off-by-one in the epoch counter)"],
         ["Batch size", f"{data_cfg.get('batch_size')}"],
         ["Precision", f"{train_cfg.get('precision')}"],
@@ -244,7 +244,7 @@ def table_A1_protocol(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
         ["Exemplar budgets", budgets("memory")],
         ["Retrieval budgets", budgets("retrieval")],
         ["Knowledge distillation", f"weight {kd_row}, temperature {kd_temp}{kd_note}"],
-        ["Evaluation protocol", "NME for B1/B3/a1-a4; head-logit for B2 (native protocol)"],
+        ["Evaluation protocol", "NME for B0/B1/B3/a1-a4; head-logit for B2 (native protocol)"],
         ["Hardware", f"{meta.get('device')}"],
         ["Software", f"torch {meta.get('torch')}, pytorch-lightning "
                      f"{meta.get('pytorch_lightning')}, python {meta.get('python')}"],
@@ -313,7 +313,7 @@ def table_A4_per_seed_metrics(runs: Dict[str, RunResult], out_dir: Path) -> List
     return _save_pair(
         headers, rows, out_dir, "A4_per_seed_metrics",
         caption="Per-seed average accuracy, forgetting and backward transfer "
-                "(percent, 33 rows: 11 runs x 3 seeds).",
+                "(percent, 36 rows: 12 runs x 3 seeds).",
         label="tab:A4_per_seed_metrics",
     )
 

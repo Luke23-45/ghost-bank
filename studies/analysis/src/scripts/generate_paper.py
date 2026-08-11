@@ -62,7 +62,7 @@ def main() -> None:
     if missing:
         logger.error("Missing runs: %s", missing)
         sys.exit(1)
-    logger.info("Runs loaded: %d/11", len(runs))
+    logger.info("Runs loaded: %d/12", len(runs))
 
     outputs: List[Path] = []
 

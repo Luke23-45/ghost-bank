@@ -55,7 +55,7 @@ each module is responsible for its own sub-path (family/type/experiment +
 Run everything (from `studies/analysis/`):
 
 ```powershell
-python -m src.scripts.generate_all                 # figures + tables
+python -m src.scripts.generate_paper             # figures + tables
 python -m src.scripts.generate_figures             # figures only
 python -m src.scripts.generate_tables              # tables only
 python -m src.scripts.generate_all --families component sensitivity

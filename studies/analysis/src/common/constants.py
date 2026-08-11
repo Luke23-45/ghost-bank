@@ -2,7 +2,7 @@
 
 Single source of truth for:
 
-- Experiment keys (B1-B3 baselines, a1-a4 component ablations, s1-s4 sensitivity).
+- Experiment keys (B0-B3 baselines, a1-a4 component ablations, s1-s4 sensitivity).
 - On-disk run locations (relative to the repository's ``experiment_output`` root).
 - Display names, colors, markers and group ordering for every figure/table.
 
@@ -25,6 +25,7 @@ NUM_TASKS = 10
 
 # ── Display metadata ─────────────────────────────────────────────────
 DISPLAY_NAMES: Dict[str, str] = {
+    "baseline":            "No replay",
     "icarl":               "iCaRL",
     "static_bank":         "Static bank",
     "uniform_herding":     "Uniform herding (Reference)",
@@ -39,6 +40,7 @@ DISPLAY_NAMES: Dict[str, str] = {
 }
 
 SHORT_NAMES: Dict[str, str] = {
+    "baseline":            "B0",
     "icarl":               "B1",
     "static_bank":         "B2",
     "uniform_herding":     "B3",
@@ -55,9 +57,10 @@ SHORT_NAMES: Dict[str, str] = {
 # ── Run location patterns (relative to EXPERIMENT_OUTPUT_ROOT) ───────
 # The loader auto-discovers the newest timestamped run directory inside.
 RUN_PATTERNS: Dict[str, Tuple[Path, str]] = {
-    "icarl":           (Path("final_baseline_run/output/cifar100/icarl"), "icarl"),
-    "static_bank":     (Path("final_baseline_run/output/cifar100/static_bank"), "static_bank"),
-    "uniform_herding": (Path("final_baseline_run/output/cifar100/uniform_herding"), "uniform_herding"),
+    "baseline":        (Path("final_baseline_run/baseline"), "baseline"),
+    "icarl":           (Path("final_baseline_run/icarl"), "icarl"),
+    "static_bank":     (Path("final_baseline_run/static_bank"), "static_bank"),
+    "uniform_herding": (Path("final_baseline_run/uniform_herding"), "uniform_herding"),
     "a1_no_kd":        (Path("abalations/component/a1_no_kd/cifar100/uniform_herding"), "uniform_herding"),
     "a2_head_eval":    (Path("abalations/component/a2_head_eval/cifar100/uniform_herding"), "uniform_herding"),
     "a3_linear_head":  (Path("abalations/component/a3_linear_head/cifar100/uniform_herding"), "uniform_herding"),
@@ -69,7 +72,7 @@ RUN_PATTERNS: Dict[str, Tuple[Path, str]] = {
 }
 
 # ── Group membership ─────────────────────────────────────────────────
-BASELINE_KEYS: List[str] = ["icarl", "static_bank", "uniform_herding"]
+BASELINE_KEYS: List[str] = ["baseline", "icarl", "static_bank", "uniform_herding"]
 COMPONENT_KEYS: List[str] = [
     "uniform_herding", "a1_no_kd", "a2_head_eval", "a3_linear_head", "a4_random_bank",
 ]
@@ -85,6 +88,7 @@ ALL_KEYS: List[str] = (
 
 # Key ordering used everywhere (paper ordering, from the master table)
 MASTER_ORDER: List[str] = [
+    "baseline",
     "icarl",
     "static_bank",
     "uniform_herding",
@@ -100,6 +104,7 @@ MASTER_ORDER: List[str] = [
 
 # ── Style assignment (stable, colorblind-safe) ───────────────────────
 COLORS: Dict[str, str] = {
+    "baseline":        SERIES_COLORS[4],   # olive
     "icarl":           SERIES_COLORS[3],   # rose
     "static_bank":     "#007AFF",          # Apple blue (darker than sky for contrast)
     "uniform_herding": SERIES_COLORS[0],   # indigo (reference; always emphasized)
@@ -114,7 +119,7 @@ COLORS: Dict[str, str] = {
 }
 
 MARKERS: Dict[str, str] = {
-    "icarl": "o", "static_bank": "s", "uniform_herding": "D",
+    "baseline": "v", "icarl": "o", "static_bank": "s", "uniform_herding": "D",
     "a1_no_kd": "p", "a2_head_eval": "P", "a3_linear_head": "*", "a4_random_bank": "X",
     "s1_budget500": "P", "s2_budget4000": "*", "s3_retr32": "X", "s4_retr128": "h",
 }
