@@ -1,79 +1,78 @@
 \section{Results}
 \label{sec:results}
 
-All results follow the protocol in Section~\ref{sec:method} and report mean
-$\pm$ population standard deviation over three seeds. Across the matched
-comparisons, prediction rule and exemplar selection produce the largest
-observed component differences; distillation primarily changes retention, and
-stored memory has a larger effect than the tested retrieval range.
-Table~\ref{tab:t1-master-results} compares the three methods at 2,000
-exemplars and retrieval budget 64;
-Tables~\ref{tab:t2-component-ablations}
-and~\ref{tab:t3-resource-sensitivity} report matched per-seed deltas for
-ablations and resource sweeps.
+All results follow the protocol in Section~\ref{sec:method} and are reported
+as mean $\pm$ population standard deviation over three seeds.  The main
+comparison in Table~\ref{tab:t1-master-results} uses active budget
+$M=2{,}000$ and retrieval budget $b=64$.
 
-\subsection{Main Comparison}
+\subsection{Main Method Comparison}
 \label{subsec:main-comparison}
 
-At the common budget, uniform herding reaches $44.99\pm1.00\%$ final average
-accuracy and $13.85\pm0.44\%$ forgetting.  Its accuracy is 2.63 percentage
-points (pp) above iCaRL and 16.39 pp above the static bank; its forgetting is
-5.61 pp and 42.01 pp lower.  The static bank retains high accuracy on the
-final task ($75.2\pm3.7\%$) but loses earlier tasks, matching its high
-aggregate forgetting.  Figure~\ref{fig:per-task-accuracy}
-shows the final per-task accuracies for the baselines and component variants.
+At the common nominal active budget, Uniform Herding obtains
+$44.99\pm1.00\%$ final average accuracy and $13.85\pm0.44\%$ forgetting.
+iCaRL obtains $42.36\pm0.87\%$ accuracy and $19.46\pm0.10\%$ forgetting;
+the static bank obtains $28.60\pm1.35\%$ and $55.86\pm1.42\%$.
+Uniform Herding therefore has higher mean accuracy and lower mean forgetting in
+this experiment.  This is an end-to-end comparison of complete protocols:
+Uniform Herding retains additional candidates for refresh, while the baselines
+retain their nominal active stores, and the methods use different objectives
+and readout protocols as specified in the appendix.  Figure~\ref{fig:per-task-accuracy}
+shows the corresponding final per-task accuracies.
 
 \begin{table}[t]
   \centering
-  \caption{Main comparison on CIFAR-100 under the shared replay protocol. All methods
-  use 2,000 stored exemplars and retrieval budget 64.}
+  \caption{Main comparison on CIFAR-100. All methods use a nominal active
+  exemplar budget of 2,000 and retrieval budget 64; Uniform Herding also
+  retains candidate storage for refresh.}
   \label{tab:t1-master-results}
+  \small
+  \resizebox{\linewidth}{!}{%
   \begin{tabular}{lrrr}
     \toprule
     Method & Average accuracy (\%) & Forgetting (\%) & BWT (\%) \\
     \midrule
     iCaRL & $42.36\pm0.87$ & $19.46\pm0.10$ & $-19.46\pm0.10$ \\
     Static bank & $28.60\pm1.35$ & $55.86\pm1.42$ & $-55.86\pm1.42$ \\
-    Uniform herding (reference) & $44.99\pm1.00$ & $13.85\pm0.44$ & $-13.54\pm0.39$ \\
+    Uniform Herding & $44.99\pm1.00$ & $13.85\pm0.44$ & $-13.54\pm0.39$ \\
     \bottomrule
   \end{tabular}
+  }
 \end{table}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{data/main/figures/fig1_per_task_accuracy.pdf}
-  \caption{Final per-task accuracies. Panel (a) compares the baselines with the
-  reference. Panel (b) shows the component variants. Shaded bands denote the
-  population standard deviation over three seeds.}
+  \caption{Final per-task accuracies. Panel (a) compares the baselines with
+  Uniform Herding. Panel (b) shows the within-method variants. Shaded bands
+  denote population standard deviation over three seeds.}
   \label{fig:per-task-accuracy}
 \end{figure}
 
-\subsection{Component Attribution}
-\label{subsec:component-attribution}
+\subsection{Supporting Analyses of Uniform Herding}
+\label{subsec:supporting-analyses}
 
-The ablations separate the roles of prediction rule, distillation, exemplar
-selection, and classifier head (Table~\ref{tab:t2-component-ablations}).
-Switching from NME to head-logit prediction produces the largest observed
-single-component change: $-10.38$ pp accuracy and $+32.50$ pp forgetting.
-Because the two variants share the training procedure, this comparison isolates
-the effect of the final prediction rule.
-
-Removing KD changes mean accuracy by $-0.21$ pp but raises forgetting by
-$10.93$ pp, indicating that KD primarily supports retention in the evaluated
-protocol. Replacing herding with random selection costs $4.83$ pp accuracy and
-adds $4.50$ pp forgetting. A linear head in place of the cosine-margin head
-changes accuracy by $-1.42$ pp and forgetting by $+0.83$ pp, smaller observed
-differences than those of the prediction and selection changes.
+Table~\ref{tab:t2-component-ablations} reports matched within-method changes
+to the prediction rule, selection rule, distillation, and classifier head.
+Replacing NME with head-logit evaluation reduces accuracy by $10.38$ pp and
+increases forgetting by $32.50$ pp.  Replacing herding with random selection
+reduces accuracy by $4.83$ pp and increases forgetting by $4.50$ pp.  Removing
+KD changes accuracy by $-0.21$ pp but increases forgetting by $10.93$ pp,
+whereas replacing the cosine-margin head with a linear head changes accuracy
+by $-1.42$ pp and forgetting by $+0.83$ pp.  These are supporting comparisons
+within the stated Uniform Herding protocol, not universal component effects.
+Figure~\ref{fig:component-attribution} shows the matched per-seed changes.
 
 \begin{table}[t]
   \centering
-  \caption{Matched component ablations relative to the reference. Deltas are
-  paired by seed.}
+  \caption{Matched within-method comparisons for Uniform Herding. Deltas are
+  paired by seed against the main configuration.}
   \label{tab:t2-component-ablations}
-  \setlength{\tabcolsep}{5pt}
+  \small
+  \resizebox{\linewidth}{!}{%
   \begin{tabular}{lrrrr}
     \toprule
-    Variant & Avg accuracy (\%) & Forgetting (\%) & $\Delta$ acc (pp) & $\Delta$ forg (pp) \\
+    Variant & Average accuracy (\%) & Forgetting (\%) & $\Delta$ accuracy (pp) & $\Delta$ forgetting (pp) \\
     \midrule
     Without KD & $44.79\pm0.31$ & $24.78\pm0.81$ & $-0.21$ & $+10.93$ \\
     Head-logit evaluation & $34.61\pm1.13$ & $46.36\pm1.63$ & $-10.38$ & $+32.50$ \\
@@ -81,78 +80,78 @@ differences than those of the prediction and selection changes.
     Random selection & $40.17\pm0.17$ & $18.35\pm0.61$ & $-4.83$ & $+4.50$ \\
     \bottomrule
   \end{tabular}
+  }
 \end{table}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{data/main/figures/fig2_component_attribution.pdf}
-  \caption{Matched per-seed component deltas relative to the reference. Negative
-  accuracy deltas and positive forgetting deltas are unfavorable.}
+  \caption{Matched per-seed changes relative to Uniform Herding. Negative
+  accuracy changes and positive forgetting changes are unfavorable.}
   \label{fig:component-attribution}
 \end{figure}
 
-\subsection{Resource Sensitivity}
+\subsection{Active-Budget and Retrieval Sensitivity}
 \label{subsec:resource-sensitivity}
 
-Memory budget has the larger observed effect in the tested range. Reducing from 2,000
-to 500 exemplars costs $8.17$ pp accuracy and adds $5.77$ pp forgetting.
-Raising memory to 4,000 gains $2.66$ pp accuracy and removes $1.18$ pp
-forgetting.  The $2{,}000 \to 4{,}000$ gain is smaller than the
-$2{,}000 \to 500$ loss---a diminishing-return pattern across these three
-budgets. Three budget values are insufficient to estimate a saturation threshold.
+Varying the active budget also changes the candidate-pool capacity because
+Uniform Herding uses $\rho=3$.  Reducing $M$ from 2,000 to 500 lowers accuracy
+by $8.17$ pp and raises forgetting by $5.77$ pp.  Increasing $M$ to 4,000
+raises accuracy by $2.66$ pp and lowers forgetting by $1.18$ pp.  These three
+points describe a tested-range resource pattern, not a scaling law.
 
-Changing the retrieval budget while keeping 2,000 exemplars has a smaller mean
-effect.  Reducing retrieval from 64 to 32 samples changes accuracy by $-1.71$
-pp and forgetting by $+1.13$ pp.  Increasing retrieval to 128 does not improve
-the mean metrics relative to 64 samples ($-0.18$ pp accuracy and $+0.81$ pp
-forgetting).  Figure~\ref{fig:resource-sensitivity} shows these trends and their
-seed variation.
+With $M=2{,}000$ fixed, reducing retrieval from 64 to 32 changes accuracy by
+$-1.71$ pp and forgetting by $+1.13$ pp.  Increasing retrieval to 128 changes
+the corresponding means by $-0.18$ pp and $+0.81$ pp.  The retrieval sweep
+therefore shows a smaller mean change over the tested values than the
+active-budget sweep (Table~\ref{tab:t3-resource-sensitivity}).
+Figure~\ref{fig:resource-sensitivity} visualizes these tested changes.
 
 \begin{table}[t]
   \centering
-  \caption{Resource sensitivity relative to the reference configuration
-  (2,000 exemplars and retrieval budget 64). Deltas are matched by seed.}
+  \caption{Resource sensitivity relative to Uniform Herding at $M=2{,}000$ and
+  retrieval budget 64. Active-budget changes also change the candidate-pool
+  capacity through $\rho=3$; deltas are paired by seed.}
   \label{tab:t3-resource-sensitivity}
-  \setlength{\tabcolsep}{5pt}
+  \small
+  \resizebox{\linewidth}{!}{%
   \begin{tabular}{llrrrr}
     \toprule
-    Axis & Value & Avg accuracy (\%) & Forgetting (\%) & $\Delta$ acc (pp) & $\Delta$ forg (pp) \\
+    Axis & Value & Average accuracy (\%) & Forgetting (\%) & $\Delta$ accuracy (pp) & $\Delta$ forgetting (pp) \\
     \midrule
-    Memory & 500 & $36.83\pm0.36$ & $19.63\pm1.01$ & $-8.17$ & $+5.77$ \\
-    Memory & 2,000 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ & $0.00$ \\
-    Memory & 4,000 & $47.66\pm0.72$ & $12.67\pm1.03$ & $+2.66$ & $-1.18$ \\
+    Active budget & 500 & $36.83\pm0.36$ & $19.63\pm1.01$ & $-8.17$ & $+5.77$ \\
+    Active budget & 2,000 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ & $0.00$ \\
+    Active budget & 4,000 & $47.66\pm0.72$ & $12.67\pm1.03$ & $+2.66$ & $-1.18$ \\
     Retrieval & 32 & $43.28\pm0.61$ & $14.98\pm0.99$ & $-1.71$ & $+1.13$ \\
     Retrieval & 64 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ & $0.00$ \\
     Retrieval & 128 & $44.81\pm0.78$ & $14.66\pm0.75$ & $-0.18$ & $+0.81$ \\
     \bottomrule
   \end{tabular}
+  }
 \end{table}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{data/main/figures/fig3_resource_sensitivity.pdf}
-  \caption{Sensitivity to total exemplar memory and replay retrieval budget.
-  Error bars denote the population standard deviation over three seeds.}
+  \caption{Sensitivity to active exemplar budget and replay retrieval budget.
+  Error bars denote population standard deviation over three seeds.}
   \label{fig:resource-sensitivity}
 \end{figure}
 
 \subsection{Accuracy--Forgetting Trade-off}
 \label{subsec:accuracy-forgetting-tradeoff}
 
-Figure~\ref{fig:accuracy-forgetting} plots all configurations in the
-accuracy--forgetting plane.  At the shared 2,000-exemplar budget, the reference
-has the highest mean accuracy and lowest mean forgetting among the three main
-methods.  The 4,000-exemplar variant sits further toward the upper-left corner;
-head-logit evaluation and the static bank fall in the lower-right region.
-Because configurations differ in both method component and resource budget,
-this plot describes the landscape but does not trace a single causal trade-off
-curve.
+Figure~\ref{fig:accuracy-forgetting} places the reported configurations in
+the accuracy--forgetting plane.  At the common nominal active budget, Uniform
+Herding has the highest mean accuracy and lowest mean forgetting among the
+three main methods.  The plot is descriptive: its points vary method choices
+and resource settings, so they do not define a single causal trade-off curve.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.92\linewidth]{data/main/figures/fig4_acc_forgetting_scatter.pdf}
-  \caption{Average accuracy versus forgetting for baselines, component
-  ablations, and resource configurations. Higher accuracy and lower forgetting
+  \caption{Average accuracy versus forgetting for baselines, within-method
+  variants, and resource configurations. Higher accuracy and lower forgetting
   are preferred.}
   \label{fig:accuracy-forgetting}
 \end{figure}
@@ -160,22 +159,21 @@ curve.
 \subsection{Task-Age Failure Modes}
 \label{subsec:task-age-failure-modes}
 
-Figure~\ref{fig:forgetting-by-age} shows two distinct failure patterns.  The
-static bank forgets $51$--$59$ pp for tasks 0--8; head-logit evaluation forgets
-$25$--$55$ pp over the same tasks.  The reference ranges from $7.6$ to $26.8$
-pp.  In both cases the most recent task retains much higher accuracy than older
-tasks (Figure~\ref{fig:per-task-accuracy}), so the final average masks a strong
-recency bias.
+Figure~\ref{fig:forgetting-by-age} shows two contrasting failure modes.  The
+static bank incurs approximately $51$--$59$ pp forgetting for tasks 0--8,
+whereas head-logit evaluation incurs approximately $25$--$55$ pp.  Uniform
+Herding ranges from $7.6$ to $26.8$ pp over these tasks.  In both adverse
+configurations, the newest task has higher final accuracy than older tasks,
+so aggregate accuracy can conceal recency bias.
 
-The zero forgetting value for task 9 is structural: no later training task can
-reduce its accuracy under the final-task definition of forgetting.  It should
-therefore not be interpreted as evidence that the last task is retained better
-than the preceding tasks.
+The zero forgetting value for task 9 is structural: no later task can reduce
+its accuracy under the final-task definition.  It is not evidence that the
+last task is retained better than the preceding tasks.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\linewidth]{data/main/figures/fig5_forgetting_by_age.pdf}
-  \caption{Forgetting by task index for the reference and two adverse
+  \caption{Forgetting by task index for Uniform Herding and two adverse
   configurations. The final task has zero forgetting by definition because no
   subsequent task is learned.}
   \label{fig:forgetting-by-age}

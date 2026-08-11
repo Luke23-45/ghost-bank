@@ -1,17 +1,19 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-This study separates the design choices of a fixed-memory exemplar replay
-system. In the evaluated protocol, the prediction rule produces the largest
-observed component difference, herding improves both accuracy and retention
-relative to random selection, and distillation improves retention with little
-change in final average accuracy. Stored memory has a larger observed effect
-than the tested retrieval range.
+We proposed Uniform Herding, a replay method that allocates a uniform active
+exemplar budget and refreshes every observed class in the current feature
+representation.  Its selected exemplars are replayed, while a bounded
+candidate pool supplies examples for later refreshes.  At $M=2{,}000$ and
+$b=64$, Uniform Herding achieves $44.99\pm1.00\%$ final average accuracy and
+$13.85\pm0.44\%$ forgetting, compared with $42.36\pm0.87\%$ and
+$19.46\pm0.10\%$ for iCaRL and $28.60\pm1.35\%$ and $55.86\pm1.42\%$ for the
+static bank.
 
-For this protocol, the configuration supported by the measurements allocates
-memory across observed classes, rebuilds representative exemplars in the
-current feature space, trains with distillation, and predicts with the
-corresponding NME prototypes. These findings rank components within the
-evaluated protocol. The next step is to run the same matched component analysis
-across additional class orders, datasets, architectures, and memory ranges to
-test whether that ranking transfers.
+Within the proposed configuration, NME and herding selection are favored over
+their tested alternatives, distillation primarily improves retention, and the
+active-budget sweep changes the metrics more than the retrieval sweep over the
+reported values.  These findings are conditional on the evaluated protocol and
+do not show that refresh alone causes the iCaRL gap.  A matched refresh-only
+comparison with common objective, head, readout, active budget, candidate
+multiplier, data order, and seeds is the next step.

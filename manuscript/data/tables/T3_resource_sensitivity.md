@@ -2,9 +2,9 @@
 
 | # | Experiment | Axis | Value | avg_acc (%) | forgetting (%) | Δ acc (pp) | Δ forgetting (pp) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| s1 | Memory 500 | Memory | 500 | 33.95 ± 1.51 | 30.48 ± 0.54 | -10.05 | +13.26 |
-| B3 | Uniform herding (Reference) | Memory | 2000 | 44.00 ± 0.51 | 17.22 ± 0.43 | 0 | 0 |
-| s2 | Memory 4000 | Memory | 4000 | 47.32 ± 0.24 | 13.31 ± 0.59 | +3.32 | -3.91 |
-| s3 | Retrieval 32 | Retrieval | 32 | 42.47 ± 0.63 | 17.21 ± 0.47 | -1.53 | -0.01 |
-| B3 | Uniform herding (Reference) | Retrieval | 64 | 44.00 ± 0.51 | 17.22 ± 0.43 | 0 | 0 |
-| s4 | Retrieval 128 | Retrieval | 128 | 44.16 ± 0.59 | 17.81 ± 0.38 | +0.16 | +0.59 |
+| s1 | Active budget 500 | Active budget | 500 | 36.83 ± 0.36 | 19.63 ± 1.01 | -8.17 | +5.77 |
+| B3 | Uniform Herding | Active budget | 2000 | 44.99 ± 1.00 | 13.85 ± 0.44 | 0 | 0 |
+| s2 | Active budget 4000 | Active budget | 4000 | 47.66 ± 0.72 | 12.67 ± 1.03 | +2.66 | -1.18 |
+| s3 | Retrieval 32 | Retrieval | 32 | 43.28 ± 0.61 | 14.98 ± 0.99 | -1.71 | +1.13 |
+| B3 | Uniform Herding | Retrieval | 64 | 44.99 ± 1.00 | 13.85 ± 0.44 | 0 | 0 |
+| s4 | Retrieval 128 | Retrieval | 128 | 44.81 ± 0.78 | 14.66 ± 0.75 | -0.18 | +0.81 |

@@ -1,53 +1,52 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Class-incremental learning requires a classifier to learn disjoint groups of
-classes sequentially while distinguishing among all observed classes at test
-time without task identity. Because retaining all prior data is often
-infeasible, replay stores a bounded set of examples. A replay system is not
-specified by memory size alone: allocation, exemplar selection, retrieval,
-training objective, classifier geometry, and prediction rule can each affect
-final accuracy and forgetting.
+Class-incremental learning requires a model to learn disjoint groups of
+classes sequentially and later classify all observed classes without task
+identity.  Because prior training data cannot usually be retained in full,
+replay stores a bounded set of exemplars.  The relevant constraint is not only
+the number of active exemplars: examples selected in an earlier feature space
+may become less representative as the model changes.
 
-Published replay methods commonly bundle these choices. Consequently, a
-comparison between method recipes cannot attribute an observed difference to
-the stored examples, their selection rule, the training loss, or the final
-prediction rule. This distinction is especially consequential for exemplar
-methods, where a learned classifier head can support representation learning
-while prototype-based prediction is used at test time.
+Replay systems combine several decisions that affect this process.  These
+include how the active budget is allocated, when exemplars are refreshed, how
+they are selected, how replay enters the loss, and how predictions are made.
+When these decisions are bundled, a performance difference can reflect the
+memory contents, the training objective, or the readout rather than the
+refresh rule itself.
 
-We present a controlled empirical study that attributes final accuracy and
-forgetting to individual components of a fixed-memory exemplar replay system.
-On CIFAR-100 with ten sequential class blocks and a ResNet-18 backbone, the
-reference allocates memory across observed classes, rebuilds a herded exemplar
-set after each task in the current feature space, trains with replay and
-old-class distillation, uses a cosine-margin head, and predicts with
-nearest-mean exemplars (NME). We compare this configuration with iCaRL and a
-static replay bank, then change distillation, prediction rule, head type, and
-exemplar selection one at a time. Separate sweeps vary total memory and replay
-retrieval while holding the remaining reference choices fixed.
+We propose Uniform Herding, a replay method that allocates an active exemplar
+budget uniformly across observed classes and refreshes every class after each
+task in the current feature representation.  The method uses greedy herding
+to construct the active set from a bounded candidate pool.  The active set is
+the source of replay; the candidate pool is retained only to provide examples
+for later refreshes.  Thus, the active budget and the total retained candidate
+storage are distinct quantities.
 
-The measurements identify the prediction rule as the largest observed
-single-component lever. At 2,000 exemplars and retrieval budget 64, replacing
-NME with head-logit prediction changes final average accuracy by $-10.38$
-percentage points (pp) and forgetting by $+32.50$ pp
-(Table~\ref{tab:t2-component-ablations}). Replacing herding with random
-selection costs $4.83$ pp accuracy and adds $4.50$ pp forgetting. Removing
-distillation changes final average accuracy by $-0.21$ pp while increasing
-forgetting by $10.93$ pp. The resource sweep shows a larger accuracy change
-when memory is reduced from 2,000 to 500 exemplars ($-8.17$ pp) than when
-retrieval is reduced from 64 to 32 samples ($-1.71$ pp;
-Table~\ref{tab:t3-resource-sensitivity}).
+We compare Uniform Herding with a faithful iCaRL implementation and a static
+replay bank on CIFAR-100 split into ten class-incremental tasks.  iCaRL herds a
+class when it arrives, preserves the resulting priority order, and truncates
+that order as the class quota decreases.  The main comparison therefore
+evaluates complete protocols: the methods also differ in training objective,
+readout, and retained candidate storage.  Targeted within-method comparisons
+then vary prediction rule, selection rule, distillation, and head geometry,
+followed by active-budget and retrieval sweeps.
+
+At the default active budget of 2,000 exemplars and retrieval budget of 64,
+Uniform Herding obtains higher mean final accuracy and lower mean forgetting
+than both baselines.  The supporting analyses show that NME prediction and
+herding are favored within the proposed configuration, distillation mainly
+affects retention, and the active-budget sweep has a larger effect than the
+tested retrieval sweep.  Task-level diagnostics show how these aggregate
+metrics distribute across task age.
 
 \paragraph{Contributions.}
 \begin{itemize}
-  \item We specify a fixed-memory exemplar protocol that rebuilds herded
-  exemplars after every task and separates the training head from the NME
-  prediction rule (Section~\ref{sec:method}).
-  \item We measure how distillation, prediction rule, head geometry, and
-  exemplar selection change accuracy and forgetting through matched component
-  ablations (Table~\ref{tab:t2-component-ablations}).
-  \item We compare the sensitivity of accuracy and retention to stored memory
-  and retrieval budget using three matched seeds
-  (Table~\ref{tab:t3-resource-sensitivity}).
+  \item We define Uniform Herding, a representation-refresh replay method with
+  uniform active class allocation and a bounded candidate pool.
+  \item We compare it with faithful iCaRL and static-bank baselines at a common
+  nominal active budget and retrieval count, while making their objective,
+  readout, and storage differences explicit.
+  \item We characterize the proposed configuration with targeted within-method
+  comparisons and active-budget and retrieval sensitivity analyses.
 \end{itemize}

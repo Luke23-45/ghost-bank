@@ -1,229 +1,39 @@
 \documentclass[10pt]{article}
 
 \usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage{microtype}
 \usepackage{amsmath}
 \usepackage{amssymb}
-\usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc}
 \usepackage{booktabs}
 \usepackage{graphicx}
-\usepackage[letterpaper]{geometry}
-\geometry{textwidth=6in,textheight=9in,top=1in,headheight=12pt,headsep=25pt,footskip=30pt}
-\usepackage{natbib}
+\usepackage[margin=1in]{geometry}
 \usepackage[hidelinks]{hyperref}
 
-% NeurIPS-style layout parameters, hand-built from the official
-% neurips_2025/2026 style file so the arXiv preprint matches the venue format.
-
-\makeatletter
-
-\renewcommand{\rmdefault}{ptm}
-\renewcommand{\sfdefault}{phv}
-
-\renewcommand{\normalsize}{%
-  \@setfontsize\normalsize\@xpt\@xipt
-  \abovedisplayskip      7\p@ \@plus 2\p@ \@minus 5\p@
-  \abovedisplayshortskip \z@ \@plus 3\p@
-  \belowdisplayskip      \abovedisplayskip
-  \belowdisplayshortskip 4\p@ \@plus 3\p@ \@minus 3\p@
-}
-\normalsize
-\renewcommand{\small}{%
-  \@setfontsize\small\@ixpt\@xpt
-  \abovedisplayskip      6\p@ \@plus 1.5\p@ \@minus 4\p@
-  \abovedisplayshortskip \z@  \@plus 2\p@
-  \belowdisplayskip      \abovedisplayskip
-  \belowdisplayshortskip 3\p@ \@plus 2\p@   \@minus 2\p@
-}
-\renewcommand{\footnotesize}{\@setfontsize\footnotesize\@ixpt\@xpt}
-\renewcommand{\scriptsize}{\@setfontsize\scriptsize\@viipt\@viiipt}
-\renewcommand{\tiny}{\@setfontsize\tiny\@vipt\@viipt}
-\renewcommand{\large}{\@setfontsize\large\@xiipt{14}}
-\renewcommand{\Large}{\@setfontsize\Large\@xivpt{16}}
-\renewcommand{\LARGE}{\@setfontsize\LARGE\@xviipt{20}}
-\renewcommand{\huge}{\@setfontsize\huge\@xxpt{23}}
-\renewcommand{\Huge}{\@setfontsize\Huge\@xxvpt{28}}
-
-\renewcommand{\section}{%
-  \@startsection{section}{1}{\z@}%
-                {-2.0ex \@plus -0.5ex \@minus -0.2ex}%
-                { 1.5ex \@plus  0.3ex \@minus  0.2ex}%
-                {\large\bf\raggedright}%
-}
-\renewcommand{\subsection}{%
-  \@startsection{subsection}{2}{\z@}%
-                {-1.8ex \@plus -0.5ex \@minus -0.2ex}%
-                { 0.8ex \@plus  0.2ex}%
-                {\normalsize\bf\raggedright}%
-}
-\renewcommand{\subsubsection}{%
-  \@startsection{subsubsection}{3}{\z@}%
-                {-1.5ex \@plus -0.5ex \@minus -0.2ex}%
-                { 0.5ex \@plus  0.2ex}%
-                {\normalsize\bf\raggedright}%
-}
-\renewcommand{\paragraph}{%
-  \@startsection{paragraph}{4}{\z@}%
-                {1.5ex \@plus 0.5ex \@minus 0.2ex}%
-                {-1em}%
-                {\normalsize\bf}%
-}
-\renewcommand{\subparagraph}{%
-  \@startsection{subparagraph}{5}{\z@}%
-                {1.5ex \@plus 0.5ex \@minus 0.2ex}%
-                {-1em}%
-                {\normalsize\bf}%
-}
-
-\renewcommand{\topfraction}{0.85}
-\renewcommand{\bottomfraction}{0.4}
-\renewcommand{\textfraction}{0.1}
-\renewcommand{\floatpagefraction}{0.7}
-
-\newlength{\@nipsabovecaptionskip}
-\newlength{\@nipsbelowcaptionskip}
-\setlength{\@nipsabovecaptionskip}{7\p@}
-\setlength{\@nipsbelowcaptionskip}{\z@}
-\setlength{\abovecaptionskip}{\@nipsabovecaptionskip}
-\setlength{\belowcaptionskip}{\@nipsbelowcaptionskip}
-\renewenvironment{table}
-  {\setlength{\abovecaptionskip}{\@nipsbelowcaptionskip}%
-   \setlength{\belowcaptionskip}{\@nipsabovecaptionskip}%
-   \@float{table}}
-  {\end@float}
-
-\setlength{\footnotesep}{6.65\p@}
-\setlength{\skip\footins}{9\p@ \@plus 4\p@ \@minus 2\p@}
-\renewcommand{\footnoterule}{\kern-3\p@ \hrule width 12pc \kern 2.6\p@}
-
-\setlength{\parindent}{\z@}
-\setlength{\parskip}{5.5\p@}
-
-\setlength{\topsep}{4\p@ \@plus 1\p@ \@minus 2\p@}
-\setlength{\partopsep}{1\p@ \@plus 0.5\p@ \@minus 0.5\p@}
-\setlength{\itemsep}{2\p@ \@plus 1\p@ \@minus 0.5\p@}
-\setlength{\parsep}{2\p@ \@plus 1\p@ \@minus 0.5\p@}
-\setlength{\leftmargin}{3pc}
-\setlength{\leftmargini}{\leftmargin}
-\setlength{\leftmarginii}{2em}
-\setlength{\leftmarginiii}{1.5em}
-\setlength{\leftmarginiv}{1.0em}
-\setlength{\leftmarginv}{0.5em}
-\def\@listi{\leftmargin\leftmargini}
-\def\@listii{\leftmargin\leftmarginii
-              \labelwidth\leftmarginii
-              \advance\labelwidth-\labelsep
-              \topsep  2\p@ \@plus 1\p@    \@minus 0.5\p@
-              \parsep  1\p@ \@plus 0.5\p@ \@minus 0.5\p@
-              \itemsep \parsep}
-\def\@listiii{\leftmargin\leftmarginiii
-              \labelwidth\leftmarginiii
-              \advance\labelwidth-\labelsep
-              \topsep    1\p@ \@plus 0.5\p@ \@minus 0.5\p@
-              \parsep    \z@
-              \partopsep 0.5\p@ \@plus 0\p@ \@minus 0.5\p@
-              \itemsep \topsep}
-\def\@listiv{\leftmargin\leftmarginiv
-              \labelwidth\leftmarginiv
-              \advance\labelwidth-\labelsep}
-\def\@listv{\leftmargin\leftmarginv
-              \labelwidth\leftmarginv
-              \advance\labelwidth-\labelsep}
-\def\@listvi{\leftmargin\leftmarginvi
-              \labelwidth\leftmarginvi
-              \advance\labelwidth-\labelsep}
-
-\widowpenalty=10000
-\clubpenalty=10000
-\flushbottom
-\sloppy
-
-\newcommand{\@toptitlebar}{%
-  \hrule height 4\p@
-  \vskip 0.25in
-  \vskip -\parskip
-}
-\newcommand{\@bottomtitlebar}{%
-  \vskip 0.29in
-  \vskip -\parskip
-  \hrule height 1\p@
-  \vskip 0.09in
-}
-\renewcommand{\maketitle}{%
-  \par
-  \begingroup
-    \renewcommand{\thefootnote}{\fnsymbol{footnote}}
-    \renewcommand{\@makefnmark}{\hbox to \z@{$^{\@thefnmark}$\hss}}
-    \long\def\@makefntext##1{%
-      \parindent 1em\noindent
-      \hbox to 1.8em{\hss $\m@th ^{\@thefnmark}$}##1
-    }
-    \thispagestyle{empty}
-    \@maketitle
-    \@thanks
-  \endgroup
-  \let\maketitle\relax
-  \let\thanks\relax
-}
-\renewcommand{\@maketitle}{%
-  \vbox{%
-    \hsize\textwidth
-    \linewidth\hsize
-    \vskip 0.1in
-    \@toptitlebar
-    \centering
-    {\LARGE\bf \@title\par}
-    \@bottomtitlebar
-    \ifx\@author\@empty
-    \else
-      \begin{tabular}[t]{c}\bf\rule{\z@}{24\p@}\@author\end{tabular}%
-      \vskip 0.3in \@minus 0.1in
-    \fi
-  }
-}
-
-\renewenvironment{abstract}%
-{%
-  \vskip 0.075in
-  \centerline{\large\bf Abstract}
-  \vspace{0.5ex}
-  \begin{quote}
-}
-{
-  \par
-  \end{quote}
-  \vskip 1ex
-}
-
-\makeatother
-
-\title{Dissecting Exemplar Replay: A Controlled Component Analysis}
+\title{Uniform Herding: Exemplar Replay with Representation Refresh}
 \author{}
+\date{}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-Exemplar replay systems combine memory allocation, sample selection,
-distillation, classifier design, and prediction rules, making it difficult to
-identify which choices govern the accuracy--forgetting trade-off. We conduct a
-controlled component study on CIFAR-100 with ten sequential class blocks, a
-ResNet-18 backbone, and fixed exemplar memory. The reference system rebuilds
-herded exemplars in the current feature space after each task, trains with
-replay and old-class distillation, and predicts by nearest-mean exemplars
-(NME). Replacing NME with head-logit prediction yields the largest observed
-single-component change: average accuracy decreases by $10.38$ percentage
-points (pp) and forgetting increases by $32.50$ pp. Replacing herding with
-random selection decreases accuracy by $4.83$ pp. Removing distillation leaves
-average accuracy nearly unchanged ($-0.21$ pp) while increasing forgetting by
-$10.93$ pp, indicating a retention role in this protocol. Reducing memory from
-2,000 to 500 exemplars has a larger accuracy effect ($-8.17$ pp) than reducing
-retrieval from 64 to 32 samples ($-1.71$ pp). The results identify prediction
-rule, exemplar selection, and stored memory as key accuracy determinants, with
-distillation serving a distinct retention role. These findings characterize one
-dataset, class order, backbone, and resource range.
+Replay must preserve prior classes as the feature representation changes, while
+only a bounded active exemplar set can be replayed.  We propose Uniform
+Herding, which allocates this active set across observed classes and refreshes
+their selected exemplars in the current representation using a bounded
+candidate pool.  On CIFAR-100 with ten class-incremental tasks, a ResNet-18
+backbone, active budget $M=2{,}000$, retrieval budget $b=64$, and three seeds,
+Uniform Herding obtains $44.99\pm1.00\%$ final average accuracy and
+$13.85\pm0.44\%$ forgetting, compared with $42.36\pm0.87\%$ and
+$19.46\pm0.10\%$ for iCaRL.  Within the Uniform Herding protocol, NME
+prediction and herding selection each outperform their corresponding variant,
+while distillation primarily reduces forgetting.  Over the tested
+resource range, changing the active budget has a larger effect than changing
+the retrieval budget.  These results characterize the method under the
+evaluated protocol.  The iCaRL comparison is end-to-end and does not isolate
+refresh from its other protocol differences.
 \end{abstract}
 
 \input{sections/introduction/introduction.tex}
@@ -233,8 +43,7 @@ dataset, class order, backbone, and resource range.
 \input{sections/discussion/discussion.tex}
 \input{sections/conclusion/conclusion.tex}
 
-\clearpage
-\bibliographystyle{plainnat}
+\bibliographystyle{plain}
 \bibliography{bib/references}
 
 \clearpage
