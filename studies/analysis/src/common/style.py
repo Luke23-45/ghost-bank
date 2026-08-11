@@ -30,11 +30,11 @@ FULL_WIDTH = 13.2   # wide multi-panel canvas
 DPI = 300
 
 # ── Font sizes (pt) ──────────────────────────────────────────────────
-FONT_SIZE_TITLE = 13
-FONT_SIZE_LABEL = 11
-FONT_SIZE_TICK = 10
-FONT_SIZE_LEGEND = 10
-FONT_SIZE_ANNOT = 9
+FONT_SIZE_TITLE = 11
+FONT_SIZE_LABEL = 10
+FONT_SIZE_TICK = 9
+FONT_SIZE_LEGEND = 9
+FONT_SIZE_ANNOT = 8
 
 # ── Colorblind-safe palettes (Wong & Tol) ────────────────────────────
 PALETTE = {

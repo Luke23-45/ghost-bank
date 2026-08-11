@@ -301,25 +301,35 @@ def plot_forgetting_by_age(
     run: RunResult,
     ref: Optional[RunResult] = None,
     *,
-    title: str,
+    title: Optional[str] = None,
     fill_gradient: bool = True,
     show_ylabel: bool = True,
     show_xlabel: bool = True,
-) -> None:
-    """Per-task forgetting vs task index (0 = oldest).
-
-    A monotone decline toward the last task is the steady-erosion signature
-    of classifier recency bias (iCaRL); a high plateau across the old tasks
-    with a tail on the newest three is the recency-anchored collapse (a2).
-    """
+    label: Optional[str] = None,
+    color: Optional[str] = None,
+    marker: Optional[str] = None,
+    linewidth: float = 2.0,
+    alpha: float = 1.0,
+) -> mpl.lines.Line2D:
+    """Per-task forgetting vs task index (0 = oldest)."""
     xs = np.asarray(TASK_TICKS, dtype=float)
     if ref is not None:
         ax.plot(xs, ref.per_task_forgetting(), color=C.color_for(ref.key),
                 marker="o", markersize=5, linewidth=1.5, alpha=0.7,
                 label=C.display_name(ref.key), zorder=4)
     f = run.per_task_forgetting()
-    ax.plot(xs, f, color=C.color_for(run.key), marker="s", markersize=6, linewidth=2.0,
-            label=C.display_name(run.key), zorder=3)
+    
+    color = color or C.color_for(run.key)
+    marker = marker or C.marker_for(run.key)
+    if label is None:
+        resolved_label = "_nolegend_"
+    elif label == "":
+        resolved_label = C.display_name(run.key)
+    else:
+        resolved_label = label
+
+    (line,) = ax.plot(xs, f, color=color, marker=marker, markersize=6, linewidth=linewidth,
+            label=resolved_label, alpha=alpha, zorder=3)
     if fill_gradient:
         for j in TASK_TICKS:
             ax.axvspan(j - 0.4, j + 0.4, color=AGE_CMAP((j + 1) / len(TASK_TICKS)), alpha=0.06)

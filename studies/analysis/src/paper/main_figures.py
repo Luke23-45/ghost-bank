@@ -28,6 +28,7 @@ from src.common.style import (
     APPLE,
     PALETTE,
     FONT_SIZE_TICK,
+    FONT_SIZE_LABEL,
     FONT_SIZE_ANNOT,
     apply_thesis_style,
     create_figure,
@@ -49,16 +50,23 @@ def fig1_per_task_accuracy(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
     emphasised with a heavier stroke; non-reference baselines are softer.
     """
     with apply_thesis_style():
-        fig, axes = create_figure(width="double", nrows=1, ncols=2, aspect=0.72)
+        # Aspect reduced from 0.72 → 0.55 so the double-column canvas
+        # Aspect reduced from 0.72 → 0.45 so the double-column canvas
+        # (6.5" wide) yields a ~3.6" tall panel pair — better balanced and
+        # less vertically stretched once the shared legend is added below.
+        fig, axes = create_figure(width="double", nrows=1, ncols=2, aspect=0.45)
         ax_a, ax_b = axes
 
         # Panel (a): baselines -------------------------------------------------
+        # No shaded std bands in the paper main figures — keep the lines
+        # clean and uncluttered (uncertainty is reported in Fig 3 / appendix).
         for key in C.BASELINE_KEYS:
             lw = 2.4 if key == REF else 1.6
             alpha_val = 1.0 if key == REF else 0.85
             line = plot_per_task_curve(
                 ax_a, runs[key],
                 label=C.display_name(key),
+                band=False,
             )
             line.set_linewidth(lw)
             line.set_alpha(alpha_val)
@@ -77,7 +85,7 @@ def fig1_per_task_accuracy(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
             line = plot_per_task_curve(
                 ax_b, runs[key],
                 label=lbl,
-                band=(key == REF),
+                band=False,
             )
             line.set_linewidth(lw)
         ax_b.set_xlabel("Task\n", color=APPLE["ink"])
@@ -91,12 +99,12 @@ def fig1_per_task_accuracy(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
         handles_b, labels_b = ax_b.get_legend_handles_labels()
         all_handles = handles_a + handles_b
         all_labels = labels_a + labels_b
-        fig.subplots_adjust(bottom=-0.22)
+        fig.subplots_adjust(bottom=-0.35)
         fig.legend(
             all_handles, all_labels,
             loc="outside lower center",
             ncol=4,
-            bbox_to_anchor=(0.54, -0.07),
+            bbox_to_anchor=(0.54, -0.18),
             fontsize=8,
             frameon=True,
             framealpha=0.92,
@@ -106,7 +114,7 @@ def fig1_per_task_accuracy(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
             handletextpad=0.6,
         )
 
-        return save_figure(fig, out_dir / MAIN_OUT / "fig1_per_task_accuracy",  bbox_inches="tight")
+        return save_figure(fig, out_dir / MAIN_OUT / "fig1_per_task_accuracy", bbox_inches="tight")
 
 
 # ── Fig 2: component attribution ─────────────────────────────────────
@@ -140,7 +148,7 @@ def fig2_component_attribution(runs: Dict[str, RunResult], out_dir: Path) -> Lis
         ax1.set_yticks(ys)
         ax1.set_yticklabels(
             [C.display_name(ablation_keys[i]) for i in order],
-            fontsize=FONT_SIZE_TICK,
+            fontsize=FONT_SIZE_LABEL,
         )
         ax1.axvline(0, color=APPLE["ink"], linewidth=1.2)
         ax1.set_xlabel("Delta (pp)", x=-0.1)
@@ -205,7 +213,7 @@ def fig3_resource_sensitivity(runs: Dict[str, RunResult], out_dir: Path) -> List
     series = {axis: _resource_series(runs, keys, axis) for axis, _, keys in panels}
 
     with apply_thesis_style():
-        fig, axes = create_figure(width="full", nrows=2, ncols=2, aspect=0.5)
+        fig, axes = create_figure(width="double", nrows=2, ncols=2, aspect=0.95)
         for row, (axis, xlabel, _keys) in enumerate(panels):
             xs, accs, acc_stds, fors, for_stds = series[axis]
             pad = 0.15 * np.ptp(xs) if np.ptp(xs) > 0 else 1.0
@@ -327,50 +335,62 @@ def fig4_acc_forgetting_scatter(runs: Dict[str, RunResult], out_dir: Path) -> Li
 
 # ── Fig 5: failure modes — forgetting by task age ────────────────────
 def fig5_forgetting_by_age(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
-    """2 panels: (a) static bank vs ref; (b) a2 vs ref.
-
-    Panel (b) uses the corrected characterization: a2 is a recency-anchored
-    collapse (plateau ~50 pp on old tasks, tail on the newest three), NOT a
-    monotone age gradient — the monotone gradient belongs to iCaRL.
+    """2 panels: (a) baselines; (b) component ablations.
+    
+    Mirrors the structure of Figure 1, but plots per-task forgetting
+    instead of final accuracy.
     """
     with apply_thesis_style():
-        fig, axes = create_figure(width="double", nrows=1, ncols=2, aspect=0.55)
+        fig, axes = create_figure(width="double", nrows=1, ncols=2, aspect=0.45)
         ax_a, ax_b = axes
 
-        plot_forgetting_by_age(
-            ax_a, runs["static_bank"], ref=runs[REF],
-            title="(a) Static bank",
-            fill_gradient=True,
-            show_xlabel=False,
-        )
+        # Panel (a): baselines -------------------------------------------------
+        for i, key in enumerate(C.BASELINE_KEYS):
+            lw = 2.4 if key == REF else 1.6
+            alpha_val = 1.0 if key == REF else 0.85
+            line = plot_forgetting_by_age(
+                ax_a, runs[key],
+                label=C.display_name(key),
+                fill_gradient=(i == 0),
+                linewidth=lw,
+                alpha=alpha_val,
+                show_xlabel=False,
+                show_ylabel=False,
+            )
+        ax_a.set_xlabel("Task\n", color=APPLE["ink"])
+        ax_a.set_ylabel("Forgetting (pp)", color=APPLE["ink"])
+        ax_a.set_title("(a) Baselines", loc="center")
         ax_a.set_ylim(-3, 65)
         finish_axes(ax_a)
 
-        plot_forgetting_by_age(
-            ax_b, runs["a2_head_eval"], ref=runs[REF],
-            title="(b) Head-logit eval",
-            fill_gradient=True,
-            show_xlabel=False,
-            show_ylabel=False,
-        )
+        # Panel (b): component ablations ---------------------------------------
+        for i, key in enumerate(C.COMPONENT_KEYS):
+            lw = 2.4 if key == REF else 1.5
+            lbl = None if key == REF else C.display_name(key)
+            line = plot_forgetting_by_age(
+                ax_b, runs[key],
+                label=lbl,
+                fill_gradient=(i == 0),
+                linewidth=lw,
+                show_xlabel=False,
+                show_ylabel=False,
+            )
+        ax_b.set_xlabel("Task\n", color=APPLE["ink"])
+        ax_b.set_title("(b) Component ablations", loc="center")
         ax_b.set_ylim(-3, 65)
         finish_axes(ax_b)
 
-        # Unified legend below both panels
+        # Unified legend below both panels -------------------------------------
         handles_a, labels_a = ax_a.get_legend_handles_labels()
         handles_b, labels_b = ax_b.get_legend_handles_labels()
+        all_handles = handles_a + handles_b
+        all_labels = labels_a + labels_b
         
-        unique = {}
-        for h, l in zip(handles_a + handles_b, labels_a + labels_b):
-            if l not in unique:
-                unique[l] = h
-        
-        fig.text(0.54, -0.04, "Task", ha="center", va="center", fontsize=10)
-        fig.subplots_adjust(bottom=-0.22)
+        fig.subplots_adjust(bottom=-0.35)
         fig.legend(
-            list(unique.values()), list(unique.keys()),
+            all_handles, all_labels,
             loc="outside lower center",
-            ncol=3,
+            ncol=4,
             bbox_to_anchor=(0.54, -0.18),
             fontsize=8,
             frameon=True,
