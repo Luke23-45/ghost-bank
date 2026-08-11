@@ -10,8 +10,8 @@ $M=2{,}000$ and retrieval budget $b=64$.
 \label{subsec:main-comparison}
 
 At the common nominal active budget, Uniform Herding obtains
-$44.99\pm1.00\%$ final average accuracy and $13.85\pm0.44\%$ forgetting.
-iCaRL obtains $42.36\pm0.87\%$ accuracy and $19.46\pm0.10\%$ forgetting;
+$44.00\pm0.51\%$ final average accuracy and $17.22\pm0.43\%$ forgetting.
+iCaRL obtains $42.33\pm1.20\%$ accuracy and $24.87\pm1.11\%$ forgetting;
 the static bank obtains $28.60\pm1.35\%$ and $55.86\pm1.42\%$.
 Uniform Herding therefore has higher mean accuracy and lower mean forgetting in
 this experiment.  This is an end-to-end comparison of complete protocols:
@@ -32,9 +32,9 @@ shows the corresponding final per-task accuracies.
     \toprule
     Method & Average accuracy (\%) & Forgetting (\%) & BWT (\%) \\
     \midrule
-    iCaRL & $42.36\pm0.87$ & $19.46\pm0.10$ & $-19.46\pm0.10$ \\
+    iCaRL & $42.33\pm1.20$ & $24.87\pm1.11$ & $-24.87\pm1.11$ \\
     Static bank & $28.60\pm1.35$ & $55.86\pm1.42$ & $-55.86\pm1.42$ \\
-    Uniform Herding & $44.99\pm1.00$ & $13.85\pm0.44$ & $-13.54\pm0.39$ \\
+    Uniform Herding & $44.00\pm0.51$ & $17.22\pm0.43$ & $-16.91\pm0.41$ \\
     \bottomrule
   \end{tabular}
   }
@@ -54,12 +54,12 @@ shows the corresponding final per-task accuracies.
 
 Table~\ref{tab:t2-component-ablations} reports matched within-method changes
 to the prediction rule, selection rule, distillation, and classifier head.
-Replacing NME with head-logit evaluation reduces accuracy by $10.38$ pp and
-increases forgetting by $32.50$ pp.  Replacing herding with random selection
-reduces accuracy by $4.83$ pp and increases forgetting by $4.50$ pp.  Removing
-KD changes accuracy by $-0.21$ pp but increases forgetting by $10.93$ pp,
+Replacing NME with head-logit evaluation reduces accuracy by $10.46$ pp and
+increases forgetting by $30.36$ pp.  Replacing herding with random selection
+reduces accuracy by $2.39$ pp and increases forgetting by $1.16$ pp.  Removing
+KD changes accuracy by $-1.48$ pp but increases forgetting by $11.66$ pp,
 whereas replacing the cosine-margin head with a linear head changes accuracy
-by $-1.42$ pp and forgetting by $+0.83$ pp.  These are supporting comparisons
+by $-0.79$ pp and forgetting by $+0.12$ pp.  These are supporting comparisons
 within the stated Uniform Herding protocol, not universal component effects.
 Figure~\ref{fig:component-attribution} shows the matched per-seed changes.
 
@@ -74,10 +74,10 @@ Figure~\ref{fig:component-attribution} shows the matched per-seed changes.
     \toprule
     Variant & Average accuracy (\%) & Forgetting (\%) & $\Delta$ accuracy (pp) & $\Delta$ forgetting (pp) \\
     \midrule
-    Without KD & $44.79\pm0.31$ & $24.78\pm0.81$ & $-0.21$ & $+10.93$ \\
-    Head-logit evaluation & $34.61\pm1.13$ & $46.36\pm1.63$ & $-10.38$ & $+32.50$ \\
-    Linear head & $43.57\pm0.47$ & $14.68\pm0.48$ & $-1.42$ & $+0.83$ \\
-    Random selection & $40.17\pm0.17$ & $18.35\pm0.61$ & $-4.83$ & $+4.50$ \\
+    Without KD & $42.52\pm0.61$ & $28.88\pm0.19$ & $-1.48$ & $+11.66$ \\
+    Head-logit evaluation & $33.54\pm0.39$ & $47.58\pm0.84$ & $-10.46$ & $+30.36$ \\
+    Linear head & $43.22\pm0.36$ & $17.34\pm0.68$ & $-0.79$ & $+0.12$ \\
+    Random selection & $41.61\pm0.53$ & $18.38\pm0.47$ & $-2.39$ & $+1.16$ \\
     \bottomrule
   \end{tabular}
   }
@@ -96,13 +96,13 @@ Figure~\ref{fig:component-attribution} shows the matched per-seed changes.
 
 Varying the active budget also changes the candidate-pool capacity because
 Uniform Herding uses $\rho=3$.  Reducing $M$ from 2,000 to 500 lowers accuracy
-by $8.17$ pp and raises forgetting by $5.77$ pp.  Increasing $M$ to 4,000
-raises accuracy by $2.66$ pp and lowers forgetting by $1.18$ pp.  These three
+by $10.05$ pp and raises forgetting by $13.26$ pp.  Increasing $M$ to 4,000
+raises accuracy by $3.32$ pp and lowers forgetting by $3.91$ pp.  These three
 points describe a tested-range resource pattern, not a scaling law.
 
 With $M=2{,}000$ fixed, reducing retrieval from 64 to 32 changes accuracy by
-$-1.71$ pp and forgetting by $+1.13$ pp.  Increasing retrieval to 128 changes
-the corresponding means by $-0.18$ pp and $+0.81$ pp.  The retrieval sweep
+$-1.53$ pp and forgetting by $-0.01$ pp.  Increasing retrieval to 128 changes
+the corresponding means by $+0.16$ pp and $+0.59$ pp.  The retrieval sweep
 therefore shows a smaller mean change over the tested values than the
 active-budget sweep (Table~\ref{tab:t3-resource-sensitivity}).
 Figure~\ref{fig:resource-sensitivity} visualizes these tested changes.
@@ -119,12 +119,12 @@ Figure~\ref{fig:resource-sensitivity} visualizes these tested changes.
     \toprule
     Axis & Value & Average accuracy (\%) & Forgetting (\%) & $\Delta$ accuracy (pp) & $\Delta$ forgetting (pp) \\
     \midrule
-    Active budget & 500 & $36.83\pm0.36$ & $19.63\pm1.01$ & $-8.17$ & $+5.77$ \\
-    Active budget & 2,000 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ & $0.00$ \\
-    Active budget & 4,000 & $47.66\pm0.72$ & $12.67\pm1.03$ & $+2.66$ & $-1.18$ \\
-    Retrieval & 32 & $43.28\pm0.61$ & $14.98\pm0.99$ & $-1.71$ & $+1.13$ \\
-    Retrieval & 64 & $44.99\pm1.00$ & $13.85\pm0.44$ & $0.00$ & $0.00$ \\
-    Retrieval & 128 & $44.81\pm0.78$ & $14.66\pm0.75$ & $-0.18$ & $+0.81$ \\
+    Active budget & 500 & $33.95\pm1.51$ & $30.48\pm0.54$ & $-10.05$ & $+13.26$ \\
+    Active budget & 2,000 & $44.00\pm0.51$ & $17.22\pm0.43$ & $0.00$ & $0.00$ \\
+    Active budget & 4,000 & $47.32\pm0.24$ & $13.31\pm0.59$ & $+3.32$ & $-3.91$ \\
+    Retrieval & 32 & $42.47\pm0.63$ & $17.21\pm0.47$ & $-1.53$ & $-0.01$ \\
+    Retrieval & 64 & $44.00\pm0.51$ & $17.22\pm0.43$ & $0.00$ & $0.00$ \\
+    Retrieval & 128 & $44.16\pm0.59$ & $17.81\pm0.38$ & $+0.16$ & $+0.59$ \\
     \bottomrule
   \end{tabular}
   }
@@ -161,8 +161,8 @@ and resource settings, so they do not define a single causal trade-off curve.
 
 Figure~\ref{fig:forgetting-by-age} shows two contrasting failure modes.  The
 static bank incurs approximately $51$--$59$ pp forgetting for tasks 0--8,
-whereas head-logit evaluation incurs approximately $25$--$55$ pp.  Uniform
-Herding ranges from $7.6$ to $26.8$ pp over these tasks.  In both adverse
+whereas head-logit evaluation incurs approximately $27$--$55$ pp.  Uniform
+Herding ranges from $8.1$ to $30.1$ pp over these tasks.  In both adverse
 configurations, the newest task has higher final accuracy than older tasks,
 so aggregate accuracy can conceal recency bias.
 

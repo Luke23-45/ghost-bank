@@ -52,7 +52,7 @@ def figA2_evolution_reference(runs: Dict[str, RunResult], out_dir: Path) -> List
         fig, ax = create_figure(width="double", aspect=0.78)
         im = plot_evolution_heatmap(
             ax, runs[REF],
-            title="Uniform herding (reference) — task evolution",
+            title="Uniform Herding — task evolution",
             vmax=85,
         )
         add_colorbar(fig, im, ax)
@@ -84,6 +84,7 @@ def figA4_stability_slopes(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
             ax, runs["a1_no_kd"], runs[REF],
             title="No-KD ablation (a1) — stability slopes",
             run_label=C.display_name("a1_no_kd"),
+            ref_label=C.display_name(REF),
         )
         ax.set_ylim(0, 85)
         finish_axes(ax)

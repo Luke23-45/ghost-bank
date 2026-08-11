@@ -314,9 +314,9 @@ def fig4_acc_forgetting_scatter(runs: Dict[str, RunResult], out_dir: Path) -> Li
         
         # We want 3 columns: Core, Ablations, Sweeps
         target_cols = [
-            ["Uniform herding (Reference)", "No replay", "iCaRL", "Static bank"],
-            ["Ref. without KD", "Ref. head-logit eval", "Ref. linear head", "Ref. random selection"],
-            ["Memory 500", "Memory 4000", "Retrieval 32", "Retrieval 128"]
+            ["Uniform Herding", "No replay", "iCaRL", "Static bank"],
+            ["Without KD", "Head-logit evaluation", "Linear head", "Random selection"],
+            ["Active budget 500", "Active budget 4000", "Retrieval 32", "Retrieval 128"]
         ]
         
         # Matplotlib natively fills legends column-by-column in a top-down fashion.

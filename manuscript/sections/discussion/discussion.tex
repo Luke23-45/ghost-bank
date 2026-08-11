@@ -11,25 +11,26 @@ It does not estimate the effect of refresh alone.
 \label{subsec:what-drives-performance}
 
 Within Uniform Herding, NME evaluation is strongly favored over head-logit
-evaluation: the latter reduces accuracy by $10.38$ pp and increases forgetting
-by $32.50$ pp.  The two variants share the training procedure, so this result
+evaluation: the latter reduces accuracy by $10.46$ pp and increases forgetting
+by $30.36$ pp.  The two variants share the training procedure, so this result
 supports matching the readout to the selected-exemplar representation in this
 protocol.
 
-The herding-selection variant also outperforms random selection, with a $4.83$ pp higher
-accuracy and $4.50$ pp lower forgetting.  Removing KD changes accuracy by only
-$-0.21$ pp but increases forgetting by $10.93$ pp, supporting a retention role
+The herding-selection variant yields $2.39$ pp higher accuracy than random
+selection; its $1.16$ pp lower mean forgetting is not statistically
+distinguishable with three paired seeds.  Removing KD changes accuracy by
+$-1.48$ pp but increases forgetting by $11.66$ pp, supporting a retention role
 for distillation under the reported objective.  Replacing the cosine-margin
 head with a linear head has a smaller effect over the tested configuration
-($-1.42$ pp accuracy and $+0.83$ pp forgetting).  These comparisons describe
+($-0.79$ pp accuracy and $+0.12$ pp forgetting).  These comparisons describe
 the proposed implementation; they do not establish universal component
 effects.
 
 \subsection{Resource and Storage Implications}
 \label{subsec:resource-allocation}
 
-Reducing the active budget from 2,000 to 500 lowers accuracy by $8.17$ pp and
-raises forgetting by $5.77$ pp, whereas changing retrieval from 64 to 128
+Reducing the active budget from 2,000 to 500 lowers accuracy by $10.05$ pp and
+raises forgetting by $13.26$ pp, whereas changing retrieval from 64 to 128
 does not improve the mean metrics.  The active-budget sweep also changes the
 candidate capacity because $\rho=3$.  Uniform Herding therefore trades
 additional candidate storage and refresh computation for an active replay set

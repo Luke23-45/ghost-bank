@@ -25,27 +25,27 @@ Per run (11 runs; seeds 1993, 2023, 42):
 | `run_meta.json` | device, git commit, torch/python, total wall time | **A1/A5** |
 
 Derived quantities (implemented in `studies/analysis/src/common/data.py`, verified here):
-per-task forgetting = intro − final (`per_task_forgetting`, line 132) → **A3**; per-task final acc std (`final_task_stds`, line 84) → **A2**; matched per-seed deltas (`matched_deltas`, line 263) → **T2, T3**; per-task forgetting std from seed matrices (verified computable, e.g. reference σ = 4.3, 0.3, 0.7, 1.8, 4.0, 1.8, 0.9, 2.7, 1.1, 0.0 pp) → **A3**.
+per-task forgetting = intro − final (`per_task_forgetting`, line 132) → **A3**; per-task final acc std (`final_task_stds`, line 84) → **A2**; matched per-seed deltas (`matched_deltas`, line 263) → **T2, T3**; per-task forgetting std from seed matrices (verified computable, e.g. reference σ = 3.7, 1.4, 0.9, 1.9, 2.0, 3.5, 2.3, 2.6, 3.4, 0.0 pp) → **A3**.
 
 ---
 
 ## 2. Main tables (3)
 
-### Table 1 — Master results (all 11 runs)
+### Table 1 — Master results (all 12 runs)
 
-| # | Experiment | Mem | Retr | avg_acc (%) | forgetting (%) | BWT (%) |
+| # | Experiment | Active budget | Retrieval | avg_acc (%) | forgetting (%) | BWT (%) |
 |---|---|---|---|---|---|---|
-| B1 | iCaRL | 2000 | 64 | 42.36 ± 0.87 | 19.46 ± 0.10 | −19.46 ± * |
+| B1 | iCaRL | 2000 | 64 | 42.33 ± 1.20 | 24.87 ± 1.11 | −24.87 ± * |
 | B2 | Static bank | 2000 | 64 | 28.60 ± 1.35 | 55.86 ± 1.42 | −55.86 ± * |
-| B3 | **Uniform herding (reference)** | 2000 | 64 | **44.99 ± 1.00** | **13.85 ± 0.44** | −13.54 ± * |
-| a1 | Ref. without KD | 2000 | 64 | 44.79 ± 0.31 | 24.78 ± 0.81 | −24.78 ± * |
-| a2 | Ref. head-logit eval | 2000 | 64 | 34.61 ± 1.13 | 46.36 ± 1.63 | −46.36 ± * |
-| a3 | Ref. linear head | 2000 | 64 | 43.57 ± 0.47 | 14.68 ± 0.48 | −14.34 ± * |
-| a4 | Ref. random selection | 2000 | 64 | 40.17 ± 0.17 | 18.35 ± 0.61 | −17.75 ± * |
-| s1 | Memory 500 | 500 | 64 | 36.83 ± 0.36 | 19.63 ± 1.01 | −19.63 ± * |
-| s2 | Memory 4000 | 4000 | 64 | **47.66 ± 0.72** | **12.67 ± 1.03** | −12.12 ± * |
-| s3 | Retrieval 32 | 2000 | 32 | 43.28 ± 0.61 | 14.98 ± 0.99 | −14.67 ± * |
-| s4 | Retrieval 128 | 2000 | 128 | 44.81 ± 0.78 | 14.66 ± 0.75 | −14.38 ± * |
+| B3 | **Uniform Herding** | 2000 | 64 | **44.00 ± 0.51** | **17.22 ± 0.43** | −16.91 ± * |
+| a1 | Without KD | 2000 | 64 | 42.52 ± 0.61 | 28.88 ± 0.19 | −28.88 ± * |
+| a2 | Head-logit evaluation | 2000 | 64 | 33.54 ± 0.39 | 47.58 ± 0.84 | −47.58 ± * |
+| a3 | Linear head | 2000 | 64 | 43.22 ± 0.36 | 17.34 ± 0.68 | −17.33 ± * |
+| a4 | Random selection | 2000 | 64 | 41.61 ± 0.53 | 18.38 ± 0.47 | −18.28 ± * |
+| s1 | Active budget 500 | 500 | 64 | 33.95 ± 1.51 | 30.48 ± 0.54 | −30.48 ± * |
+| s2 | Active budget 4000 | 4000 | 64 | **47.32 ± 0.24** | **13.31 ± 0.59** | −12.74 ± * |
+| s3 | Retrieval 32 | 2000 | 32 | 42.47 ± 0.63 | 17.21 ± 0.47 | −16.87 ± * |
+| s4 | Retrieval 128 | 2000 | 128 | 44.16 ± 0.59 | 17.81 ± 0.38 | −17.49 ± * |
 
 *All 11 BWT σ values are present in `backward_transfer_std` (verified). Mem/Retr from `resolved_config.yaml` (`data.memory_total`, `method.retrieval_budget`).
 
@@ -53,33 +53,33 @@ per-task forgetting = intro − final (`per_task_forgetting`, line 132) → **A3
 
 **Serves:** report §2 ranking; plan §2.1; Fig 4 (all 11 points); Fig 3 endpoints; the protocol-fairness argument (B1/B3/a* all NME).
 
-### Table 2 — Component attribution (4 ablations vs reference, matched per-seed)
+### Table 2 — Within-method comparisons (4 variants vs main configuration, matched per-seed)
 
 | # | Component removed | avg_acc (%) | forgetting (%) | Δ avg_acc (pp) | Δ forgetting (pp) | Sig (acc / fgt) |
 |---|---|---|---|---|---|---|
-| a1 | KD (kd_weight=0) | 44.79 ± 0.31 | 24.78 ± 0.81 | −0.21 | +10.93 | n.s. / sig |
-| a2 | NME readout (head-logit eval) | 34.61 ± 1.13 | 46.36 ± 1.63 | −10.38 | +32.50 | sig / sig |
-| a3 | Cosine-margin head (linear head) | 43.57 ± 0.47 | 14.68 ± 0.48 | −1.42 | +0.83 | marginal / n.s. |
-| a4 | Herding selection (random bank) | 40.17 ± 0.17 | 18.35 ± 0.61 | −4.83 | +4.50 | sig / sig |
+| a1 | KD (kd_weight=0) | 42.52 ± 0.61 | 28.88 ± 0.19 | −1.48 | +11.66 | n.s. / sig |
+| a2 | NME readout (head-logit eval) | 33.54 ± 0.39 | 47.58 ± 0.84 | −10.46 | +30.36 | sig / sig |
+| a3 | Cosine-margin head (linear head) | 43.22 ± 0.36 | 17.34 ± 0.68 | −0.79 | +0.12 | marginal / n.s. |
+| a4 | Herding selection (random bank) | 41.61 ± 0.53 | 18.38 ± 0.47 | −2.39 | +1.16 | sig / n.s. |
 
-**Changes vs the current `component_ablations.tex`:** deltas at 2-dp matched precision — exact matched means: a1 −0.2067/+10.9259, a2 −10.3833/+32.5037, a3 −1.4233/+0.8259, a4 −4.8267/+4.4963, so at 2 dp a1 −0.21/+10.93, a2 −10.38/+32.50, a3 −1.42/+0.83, a4 −4.83/+4.50 (the current file's 1-dp +4.5 for a4 is already correct; the 2-dp upgrade matters for the a1/a2/a3 rows); adds significance flags (from report §5: significant Δacc for a2, a4; within-noise a1 acc; marginal a3 acc; forgetting flags as shown per row).
+**Changes vs the current `component_ablations.tex`:** deltas at 2-dp matched precision — exact matched means: a1 −1.4800/+11.6593, a2 −10.4600/+30.3556, a3 −0.7867/+0.1222, a4 −2.3900/+1.1593, so at 2 dp a1 −1.48/+11.66, a2 −10.46/+30.36, a3 −0.79/+0.12, a4 −2.39/+1.16; adds significance flags (from report §5: significant Δacc for a2, a4; within-noise a1 acc; marginal a3 acc; forgetting flags as shown per row).
 
-**Serves:** plan §2.2; Fig 2; the "KD is pure stability" and "NME readout dominates" claims.
+**Serves:** plan §2.2; Fig 2; the finding that distillation primarily affects retention and that NME readout is important in this configuration.
 
-### Table 3 — Resource sensitivity (memory and retrieval, with reference anchors)
+### Table 3 — Resource sensitivity (active budget and retrieval, with main-configuration anchors)
 
 | # | Experiment | Axis | Value | avg_acc (%) | forgetting (%) | Δ avg_acc (pp) | Δ forgetting (pp) |
 |---|---|---|---|---|---|---|---|
-| s1 | Memory 500 | Memory | 500 | 36.83 ± 0.36 | 19.63 ± 1.01 | −8.17 | +5.77 |
-| B3 | **Uniform herding** | Memory | 2000 | **44.99 ± 1.00** | **13.85 ± 0.44** | 0 | 0 |
-| s2 | Memory 4000 | Memory | 4000 | **47.66 ± 0.72** | **12.67 ± 1.03** | +2.66 | −1.18 |
-| s3 | Retrieval 32 | Retrieval | 32 | 43.28 ± 0.61 | 14.98 ± 0.99 | −1.71 | +1.13 |
-| B3 | **Uniform herding** | Retrieval | 64 | **44.99 ± 1.00** | **13.85 ± 0.44** | 0 | 0 |
-| s4 | Retrieval 128 | Retrieval | 128 | 44.81 ± 0.78 | 14.66 ± 0.75 | −0.18 | +0.81 |
+| s1 | Active budget 500 | Active budget | 500 | 33.95 ± 1.51 | 30.48 ± 0.54 | −10.05 | +13.26 |
+| B3 | **Uniform Herding** | Active budget | 2000 | **44.00 ± 0.51** | **17.22 ± 0.43** | 0 | 0 |
+| s2 | Active budget 4000 | Active budget | 4000 | **47.32 ± 0.24** | **13.31 ± 0.59** | +3.32 | −3.91 |
+| s3 | Retrieval 32 | Retrieval | 32 | 42.47 ± 0.63 | 17.21 ± 0.47 | −1.53 | −0.01 |
+| B3 | **Uniform Herding** | Retrieval | 64 | **44.00 ± 0.51** | **17.22 ± 0.43** | 0 | 0 |
+| s4 | Retrieval 128 | Retrieval | 128 | 44.16 ± 0.59 | 17.81 ± 0.38 | +0.16 | +0.59 |
 
-All deltas are matched per-seed vs the reference (verified: s1 −8.17/+5.77, s2 +2.66/−1.18, s3 −1.71/+1.13, s4 −0.18/+0.81).
+All deltas are matched per-seed vs the main configuration (verified: s1 −10.05/+13.26, s2 +3.32/−3.91, s3 −1.53/−0.01, s4 +0.16/+0.59).
 
-**Changes vs the current `sensitivity.tex`:** adds the reference anchors (the memory curve is 500/2000/4000 and the retrieval curve 32/64/128 — the current table shows only the two off-reference points, which makes the saturation claim unverifiable), adds matched deltas.
+**Changes vs the current `sensitivity.tex`:** adds the main-configuration anchors (the active-budget curve is 500/2000/4000 and the retrieval curve 32/64/128), adds matched deltas.
 
 **Serves:** report §4.5 resource story; Fig 3; the "memory is the strong lever, retrieval saturates at 64" claim.
 
@@ -93,23 +93,23 @@ Source: `resolved_config.yaml` ×11, `run_meta.json` ×11. **New table** (protoc
 **Naming note:** appendix table numbers (A1–A6) are independent of the appendix *figure* numbers (Fig A1–A4) defined in `analysis_plan.md` §5 — any "A1 heatmap" reference here means **Fig A1** (forgetting heatmap), not this protocol table.
 
 ### A2 — Per-task final accuracies (11 × 10), mean ± std
-Cells "54.5 ± 4.1" format (landscape). Means verified (plan §2.3); stds from `task_N_final_acc_std` (verified present for all 11 runs, e.g. reference t4 σ = 10.8 pp).
+Cells "54.5 ± 4.1" format (landscape). Means verified (plan §2.3); stds from `task_N_final_acc_std` (verified present for all 11 runs, e.g. reference t4 σ = 8.5 pp).
 **Supersedes** `per_task_accuracies.tex` (adds the std block the current file omits).
 Serves: Fig 1 numbers; the s1 "uniform degradation" claim now has a tabular home.
 
 ### A3 — Per-task forgetting (11 × 10), intro − final (pp), mean ± std
-Means verified (plan §2.4); σ from per-seed matrices (verification method confirmed). **New table** — the single largest gap in the current set: it is the numeric twin of Fig 5 and Fig A1 (forgetting heatmap), and the evidence for the study's headline distinction (B2 catastrophic-uniform 50.8–59.0 pp vs a2 anchored collapse 47.9–54.6 pp plateau + 38.1/25.5/0.0 tail).
+Means verified (plan §2.4); σ from per-seed matrices (verification method confirmed). **New table** — the single largest gap in the current set: it is the numeric twin of Fig 5 and Fig A1 (forgetting heatmap), and the evidence for the study's headline distinction (B2 catastrophic-uniform 50.8–59.0 pp vs a2 anchored collapse 47.7–55.1 pp plateau + 42.1/27.2/0.0 tail).
 Serves: Fig 5, Fig A1, §3's corrected interpretation.
 
 ### A4 — Per-seed metrics (33 rows: 11 runs × 3 seeds)
 Columns: # | Experiment | Seed | avg_acc (%) | forgetting (%) | BWT (%). Long format.
-Verified: all 44 cells of the current `per_seed_results.tex` match; **adds per-seed forgetting and BWT** (present in JSON, previously untabulated; e.g. iCaRL forgetting 19.5/19.3/19.6, BWT −19.5/−19.3/−19.6).
-Serves: seed-level reproducibility; the a4 consistency claim (σ 0.17) is now fully inspectable.
+Verified: all 44 cells of the current `per_seed_results.tex` match; **adds per-seed forgetting and BWT** (present in JSON, previously untabulated; e.g. iCaRL forgetting 25.83/25.46/23.32, BWT −25.83/−25.46/−23.32).
+Serves: seed-level reproducibility; the a4 consistency claim (σ 0.53) is now fully inspectable.
 Note: per-seed *per-task* accuracies (33×10) remain artifact-only (§6) — too raw to tabulate; their stds are summarized in A2/A3.
 
 ### A5 — Compute cost (11 runs)
 Columns: # | Experiment | wall_time_s (mean ± std) | seed 1993 | seed 2023 | seed 42 | device.
-Verified means: B1 3755, B2 2716, B3 4493, a1 3308, a2 4280, a3 3732, a4 4556, s1 4292, s2 4352, s3 3958, s4 5919 s; per-seed wall times verified present for all 33 seeds.
+Verified means: B1 3649, B2 2756, B3 4635, a1 3446, a2 4332, a3 3957, a4 4337, s1 4237, s2 4309, s3 3517, s4 5286 s; per-seed wall times verified present for all 33 seeds.
 **New table** — backs the report's "55–99 min/seed" runtime claim and the reproducibility appendix.
 
 ### A6 — Exemplar budget verification (bank sizes)
@@ -178,8 +178,8 @@ Nothing is deleted or hidden; each item has a stated reason.
 ## 7. Open items — ALL RESOLVED at implementation (2026-08-05)
 
 1. **Epochs: config says 70 (`max_epochs`, `epochs_per_task`), all runs record 71.0.** RESOLVED: verified all 33 seeds × 11 runs record exactly 71.0 epochs (`data.py epochs_per_task()` asserts uniformity). It is an off-by-one in the epoch counter; Table A1 states "70 configured; 71 recorded".
-2. **a4 matched Δforgetting = +4.4963 pp → +4.50 at 2 dp** RESOLVED: verified +4.496296; Table 2 carries +4.50; the spurious "+4.49" (averaging rounded per-seed 4.94/5.34/3.20) is dropped.
-3. **Report §5 significance** RESOLVED: all T2 rows computed with one consistent two-sided paired t-test (per-seed deltas vs 0): a1 acc p=0.807 n.s. / fgt p=0.0008 sig; a2 p=0.015/0.002 sig/sig; a3 p=0.068 marginal / p=0.326 n.s.; a4 p=0.020/0.021 sig/sig. Matches plan Table 2 flags; now asserted by `verify_paper.py`.
+2. **a4 matched Δforgetting = +1.1593 pp → +1.16 at 2 dp** RESOLVED: verified +1.159260; Table 2 carries +1.16; the a4 forgetting delta is not significant under the paired test (p = 0.19), so the flag is n.s.
+3. **Report §5 significance** RESOLVED: all T2 rows computed with one consistent two-sided paired t-test (per-seed deltas vs 0): a1 acc p=0.1016 n.s. / fgt p=0.0014 sig; a2 p=0.0025/0.0001 sig/sig; a3 p=0.0820 marginal / p=0.8844 n.s.; a4 p=0.0197/0.1875 sig/n.s. Matches plan Table 2 flags; now asserted by `verify_paper.py`.
 4. **BWT for a1–s4** RESOLVED: filled in Table 1 from `backward_transfer_mean` (verified); report text update tracked in `docs/experiment_results_summary.md`.
 5. **B2 protocol note** RESOLVED: A1 states static bank uses head-logit eval (its native protocol).
 
@@ -191,6 +191,6 @@ As built (all verified 2026-08-05):
 
 1. Table generators live in `src/paper/tables.py` (replacing the removed `src/scripts/generate_tables.py`); T1–T3, A1–A6 are emitted in `.tex/.md` pairs under `outputs/paper/tables/`.
 2. All cells read from `RunResult` / artifacts — no hard-coded numbers (A1/A5/A6 are fully data-driven).
-3. `src/scripts/verify_paper.py` re-derives every cell from `final_results.json`/CSVs and diffs against embedded expected constants; any mismatch fails the run. **249/249 checks pass.**
+3. `src/scripts/verify_paper.py` re-derives every cell from `final_results.json`/CSVs and diffs against embedded expected constants; any mismatch fails the run. **265/265 checks pass.**
 4. Significance column filled by one paired test (two-sided `scipy.stats.ttest_1samp`, per-seed deltas vs zero; sig p<0.05, marginal p<0.10, else n.s.); expected flags asserted per row.
 5. `analysis_plan.md` §7 references this document.

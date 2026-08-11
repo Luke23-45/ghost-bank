@@ -235,7 +235,7 @@ def plot_stability_slopes(
     *,
     title: str,
     run_label: str,
-    ref_label: str = "Reference",
+    ref_label: str = "Uniform Herding",
 ) -> None:
     """Paired per-task dots: accuracy at introduction vs accuracy at the end.
 

@@ -17,9 +17,9 @@ Also disclose the method-specific readout/training protocols from the appendix.
 
 Report the exact regenerated T1 values:
 
-- Uniform Herding: `44.99 +/- 1.00` average accuracy, `13.85 +/- 0.44`
+- Uniform Herding: `44.00 +/- 0.51` average accuracy, `17.22 +/- 0.43`
   forgetting.
-- iCaRL: `42.36 +/- 0.87` average accuracy, `19.46 +/- 0.10` forgetting.
+- iCaRL: `42.33 +/- 1.20` average accuracy, `24.87 +/- 1.11` forgetting.
 - Static bank: `28.60 +/- 1.35` average accuracy, `55.86 +/- 1.42`
   forgetting.
 
@@ -59,9 +59,9 @@ the implementation uses `rho=3`; therefore, do not present T3 as an isolated
 test of active storage alone. Report it as resource sensitivity over the tested
 configuration.
 
-Report the exact T3 deltas: memory 500 (`-8.17` accuracy, `+5.77`
-forgetting), memory 4000 (`+2.66`, `-1.18`), retrieval 32 (`-1.71`, `+1.13`),
-and retrieval 128 (`-0.18`, `+0.81`). State that these are tested-range
+Report the exact T3 deltas: memory 500 (`-10.05` accuracy, `+13.26`
+forgetting), memory 4000 (`+3.32`, `-3.91`), retrieval 32 (`-1.53`, `-0.01`),
+and retrieval 128 (`+0.16`, `+0.59`). State that these are tested-range
 sensitivity patterns, not a scaling law or saturation result.
 
 ## 4. Diagnostics

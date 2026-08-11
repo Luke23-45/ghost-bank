@@ -5,13 +5,14 @@ We proposed Uniform Herding, a replay method that allocates a uniform active
 exemplar budget and refreshes every observed class in the current feature
 representation.  Its selected exemplars are replayed, while a bounded
 candidate pool supplies examples for later refreshes.  At $M=2{,}000$ and
-$b=64$, Uniform Herding achieves $44.99\pm1.00\%$ final average accuracy and
-$13.85\pm0.44\%$ forgetting, compared with $42.36\pm0.87\%$ and
-$19.46\pm0.10\%$ for iCaRL and $28.60\pm1.35\%$ and $55.86\pm1.42\%$ for the
+$b=64$, Uniform Herding achieves $44.00\pm0.51\%$ final average accuracy and
+$17.22\pm0.43\%$ forgetting, compared with $42.33\pm1.20\%$ and
+$24.87\pm1.11\%$ for iCaRL and $28.60\pm1.35\%$ and $55.86\pm1.42\%$ for the
 static bank.
 
-Within the proposed configuration, NME and herding selection are favored over
-their tested alternatives, distillation primarily improves retention, and the
+Within the proposed configuration, NME and herding selection yield higher mean
+final accuracy than their tested alternatives, while distillation primarily
+improves retention.  The
 active-budget sweep changes the metrics more than the retrieval sweep over the
 reported values.  These findings are conditional on the evaluated protocol and
 do not show that refresh alone causes the iCaRL gap.  A matched refresh-only

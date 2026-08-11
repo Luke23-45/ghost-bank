@@ -2,6 +2,12 @@
 
 **Status: IMPLEMENTED (2026-08-05) — approved artifact set generated and verified**
 **Date:** 2026-08-05
+**Update (2026-08-12):** all numeric tables in this document describe the previous
+run (`experiment_output_previous/`, Aug 1–4). The manuscript and `table_plan.md`
+now cite the current run (`experiment_output/`, Aug 9–10); the authoritative
+expected values live in `src/scripts/verify_paper.py` (265/265 checks pass). The
+qualitative §3 data-correction conclusions (anchored a2 collapse vs iCaRL age
+gradient) still hold under the current run.
 **Scope:** Selection of figures/tables for the manuscript from the 38-figure analysis library, with full verification against persisted run data. **The approved set (5 main + 4 appendix figures, 9 tables) is implemented; the excluded 38-figure library was removed per decision (no `--all-figures`).**
 
 ---
@@ -23,7 +29,7 @@ The former analysis pipeline generated **38 figure sets + 12 table files** (6 ta
 
 ## 2. Data foundation — verification statement
 
-Every number in this document was **recomputed from the persisted run artifacts** (`experiment_output/**/results/final_results.json` and `metrics/aggregated_accuracy_matrix.csv`) via the analysis data layer (`studies/analysis/src/common/data.py`), **and independently cross-checked** against `docs/experiment_results_summary.md`. All values match the report exactly. Seeds: 1993, 2023, 42; metrics are mean ± population std over the 3 seeds.
+Every number in this document is a **historical snapshot** recomputed from the persisted previous-run artifacts (`experiment_output_previous/**/results/final_results.json` and `metrics/aggregated_accuracy_matrix.csv`) via the analysis data layer (`studies/analysis/src/common/data.py`), and independently cross-checked against the historical results summary. The manuscript uses the current run in `experiment_output/`; its authoritative values are checked by `studies/analysis/src/scripts/verify_paper.py`. Seeds: 1993, 2023, 42; metrics are mean ± population std over the 3 seeds.
 
 ### 2.1 Master results (all 11 runs) — verified ✓
 
@@ -84,7 +90,7 @@ Every number in this document was **recomputed from the persisted run artifacts*
 
 > **Definitions (matching the training code, `studies/runner/cifar100/metrics.py:14`):**
 > - §2.4 computes per-task forgetting as *introduction − final* per task (mean over seeds, all 10 tasks; t9 = 0.0 by construction — the last task is introduced at the final evaluation and cannot be forgotten; the −1.2 on a3/t8 means the final accuracy *exceeded* the introduction accuracy for that task).
-> - The aggregate `forgetting` in §2.1 is the standard **Chaudhry et al.** metric: mean over tasks 0..8 (T−1 tasks) of *(peak accuracy over all evaluations − final accuracy)*, averaged over seeds. Because it uses the per-task peak (≥ introduction) and averages 9 rather than 10 tasks, it is systematically slightly higher than the §2.4 mean (e.g. static bank 55.86 vs 50.3; reference 13.85 vs 12.2). Both definitions are reproduced exactly from the persisted per-seed matrices (verification §9).
+> - The aggregate `forgetting` in §2.1 is the standard **Chaudhry et al.** metric: mean over tasks 0..8 (T−1 tasks) of *(peak accuracy over all evaluations − final accuracy)*, averaged over seeds. Because it uses the per-task peak (≥ introduction) and averages 9 rather than 10 tasks, it is systematically slightly higher than the §2.4 mean (e.g. static bank 55.86 vs 55.2; reference 17.22 vs 15.2). Both definitions are reproduced exactly from the persisted per-seed matrices (verification §9).
 
 ---
 

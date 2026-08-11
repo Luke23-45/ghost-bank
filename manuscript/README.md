@@ -24,7 +24,7 @@ that the template replaces.
 - `dev/`: scratch space for manuscript development
 
 Section organization follows `../paper_structure.md` (same directory as this
-workspace). The reference-method formal definition lives in
+workspace). The Uniform Herding formal definition lives in
 `formal_definition.md` (same directory).
 
 ## Writing Rule

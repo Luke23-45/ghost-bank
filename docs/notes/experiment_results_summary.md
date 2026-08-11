@@ -1,7 +1,14 @@
 # CIFAR-100 Class-Incremental Learning — Experiment Results Summary
 
-**Report date:** 2026-08-05
-**Scope:** Full baseline + ablation study of the uniform-herding replay method ("reference"), its four component ablations, and four resource-sensitivity rows. All numbers below are read directly from the persisted run artifacts (`experiment_output/final_baseline_run/`, `experiment_output/abalations/`); every per-seed value is stored in the corresponding `results/final_results.json`.
+**Report date:** 2026-08-05 (historical snapshot)
+
+> **Superseded data notice.** This document records the previous run in
+> `experiment_output_previous/` and is retained for audit history.  It is not
+> the source for the manuscript.  The manuscript uses the current run in
+> `experiment_output/`; its authoritative values are independently checked by
+> `studies/analysis/src/scripts/verify_paper.py`.
+
+**Scope:** Full baseline + ablation study of the uniform-herding replay method ("reference"), its four component ablations, and four resource-sensitivity rows. All numbers below are read directly from the persisted historical run artifacts (`experiment_output_previous/final_baseline_run/`, `experiment_output_previous/abalations/`); every per-seed value is stored in the corresponding `results/final_results.json`.
 
 ---
 

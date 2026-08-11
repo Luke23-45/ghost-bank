@@ -73,7 +73,7 @@ def _sig_cell(deltas: Sequence[float]) -> str:
 
 # ── T1: master results ───────────────────────────────────────────────
 def table_T1_master_results(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
-    headers = ["#", "Experiment", "Mem", "Retr", "avg_acc (%)", "forgetting (%)", "BWT (%)"]
+    headers = ["#", "Experiment", "Active budget", "Retrieval", "avg_acc (%)", "forgetting (%)", "BWT (%)"]
     rows = []
     for key in C.MASTER_ORDER:
         run = runs[key]
@@ -118,8 +118,8 @@ def table_T2_component_ablations(runs: Dict[str, RunResult], out_dir: Path) -> L
         ])
     return _save_pair(
         headers, rows, out_dir, "T2_component_ablations",
-        caption="Component ablations on CIFAR-100 (mean $\\pm$ std over 3 seeds; "
-                "deltas are matched per-seed against the reference run, two-sided "
+        caption="Within-method comparisons for Uniform Herding on CIFAR-100 (mean $\\pm$ std over 3 seeds; "
+                "deltas are matched per-seed against the main configuration, two-sided "
                 "paired t-test vs zero, sig p<0.05, marginal p<0.1).",
         label="tab:T2_component_ablations",
     )
@@ -145,9 +145,9 @@ def table_T3_resource_sensitivity(runs: Dict[str, RunResult], out_dir: Path) -> 
         ]
 
     for key, axis, value in [
-        ("s1_budget500", "Memory", 500),
-        ("uniform_herding", "Memory", 2000),
-        ("s2_budget4000", "Memory", 4000),
+        ("s1_budget500", "Active budget", 500),
+        ("uniform_herding", "Active budget", 2000),
+        ("s2_budget4000", "Active budget", 4000),
         ("s3_retr32", "Retrieval", 32),
         ("uniform_herding", "Retrieval", 64),
         ("s4_retr128", "Retrieval", 128),
@@ -162,8 +162,8 @@ def table_T3_resource_sensitivity(runs: Dict[str, RunResult], out_dir: Path) -> 
     return _save_pair(
         headers, rows, out_dir, "T3_resource_sensitivity",
         caption="Resource sensitivity on CIFAR-100 (mean $\\pm$ std over 3 seeds; "
-                "deltas are matched per-seed against the reference run at 2000 "
-                "exemplars / 64 retrieval).",
+                "deltas are matched per-seed against Uniform Herding at active budget "
+                "2000 / retrieval 64).",
         label="tab:T3_resource_sensitivity",
     )
 

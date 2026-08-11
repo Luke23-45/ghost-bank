@@ -212,11 +212,11 @@ Herding, which allocates this active set across observed classes and refreshes
 their selected exemplars in the current representation using a bounded
 candidate pool.  On CIFAR-100 with ten class-incremental tasks, a ResNet-18
 backbone, active budget $M=2{,}000$, retrieval budget $b=64$, and three seeds,
-Uniform Herding obtains $44.99\pm1.00\%$ final average accuracy and
-$13.85\pm0.44\%$ forgetting, compared with $42.36\pm0.87\%$ and
-$19.46\pm0.10\%$ for iCaRL.  Within the Uniform Herding protocol, NME
-prediction and herding selection each outperform their corresponding variant,
-while distillation primarily reduces forgetting.  Over the tested
+Uniform Herding obtains $44.00\pm0.51\%$ final average accuracy and
+$17.22\pm0.43\%$ forgetting, compared with $42.33\pm1.20\%$ and
+$24.87\pm1.11\%$ for iCaRL.  Within the Uniform Herding protocol, replacing NME
+or herding with the tested alternatives lowers mean final accuracy, while
+removing distillation primarily increases forgetting.  Over the tested
 resource range, changing the active budget has a larger effect than changing
 the retrieval budget.  These results characterize the method under the
 evaluated protocol.  The iCaRL comparison is end-to-end and does not isolate

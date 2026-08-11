@@ -31,9 +31,9 @@ Write one compact paragraph in this order:
    current representation using a bounded candidate pool.
 3. State the evaluation: CIFAR-100, ten class-incremental tasks, ResNet-18,
    active budget `M=2,000`, retrieval budget `b=64`, and three seeds.
-4. Report the main values exactly: Uniform Herding has `44.99 +/- 1.00`
-   average accuracy and `13.85 +/- 0.44` forgetting; iCaRL has
-   `42.36 +/- 0.87` and `19.46 +/- 0.10`.
+4. Report the main values exactly: Uniform Herding has `44.00 +/- 0.51`
+   average accuracy and `17.22 +/- 0.43` forgetting; iCaRL has
+   `42.33 +/- 1.20` and `24.87 +/- 1.11`.
 5. Summarize the supporting evidence without turning it into the headline:
    NME is substantially better than head-logit evaluation in this protocol,
    herding is better than the random-selection variant, KD mainly changes
