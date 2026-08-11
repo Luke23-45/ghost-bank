@@ -1,0 +1,132 @@
+% --- System overview: reference replay configuration ---
+% Place with:  \input{data/diagram/system_overview.tex}
+% Preamble requires:
+%   \usepackage{tikz}
+%   \usetikzlibrary{arrows.meta, fit, backgrounds, positioning}
+
+\definecolor{compfill}{RGB}{240,244,248}
+\definecolor{compdraw}{RGB}{140,155,170}
+\definecolor{ablfill}{RGB}{255,243,224}
+\definecolor{abldraw}{RGB}{230,126,34}
+\definecolor{arrowcol}{RGB}{90,90,90}
+\definecolor{notecol}{RGB}{120,120,120}
+\definecolor{regionfill}{RGB}{250,250,250}
+\definecolor{regiondraw}{RGB}{210,210,210}
+\definecolor{labelcol}{RGB}{150,150,150}
+\definecolor{mergecol}{RGB}{160,170,180}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  scale=0.9,
+  >=Stealth,
+  node distance=4pt,
+  base/.style={
+    draw, rounded corners=2pt, minimum height=8.5mm,
+    minimum width=24mm, align=center, inner sep=3pt,
+    font=\sffamily\small, line width=0.5pt
+  },
+  comp/.style={base, fill=compfill, draw=compdraw},
+  abl/.style={base, fill=ablfill, draw=abldraw, line width=0.7pt},
+  flow/.style={->, line width=0.55pt, draw=arrowcol},
+  back/.style={flow, dashed},
+  note/.style={font=\sffamily\tiny, text=notecol},
+  region/.style={
+    draw=regiondraw, fill=regionfill, rounded corners=4pt,
+    inner sep=9pt, line width=0.3pt
+  },
+  rlabel/.style={font=\sffamily\scriptsize\bfseries, text=labelcol},
+]
+
+% ==================== TRAINING ====================
+\node[comp] (data) at (0, 0)       {Task $t$ data};
+\node[comp] (rpl)  at (0, -1.3)    {Replay};
+\node[circle, fill=mergecol, inner sep=1.5pt]
+             (mrg) at (3, -0.65)   {};
+\node[comp] (bb)   at (6, -0.65)   {Backbone $f_\theta$};
+\node[abl]  (head) at (9, -0.65)   {Head};
+\node[abl]  (loss) at (12, -0.65)  {Loss};
+\node[comp] (tch)  at (12, -2.1)   {Teacher $f_{\theta'}$};
+
+\draw[flow] (data.east) -- (mrg);
+\draw[flow] (rpl.east)  -- (mrg);
+\draw[flow] (mrg)  -- (bb);
+\draw[flow] (bb)   -- (head);
+\draw[flow] (head) -- (loss);
+\draw[flow] (tch)  -- (loss);
+
+\node[note, below=2pt of head] {cosine-margin\,/\,linear};
+\node[note, above=2pt of loss] {CE + KD\,/\,CE only};
+\node[note, below=2pt of rpl]  {$b$ samples};
+
+% headroom reserved above the training row, for the panel title
+\coordinate (R1pad) at ($(data.north)+(0,0.5)$);
+
+% ==================== MEMORY REBUILD ====================
+\node[comp] (pool) at (1, -4.7)    {Class pools};
+\node[abl]  (sel)  at (4.8, -4.7)  {Selection};
+\node[comp] (mem)  at (8.6, -4.7)  {Memory $\mathcal{M}$};
+\node[comp] (prt)  at (12, -4.7)   {Prototypes $\hat{\mu}_c$};
+
+\draw[flow] (pool) -- (sel);
+\draw[flow] (sel)  -- (mem);
+\draw[flow] (mem)  -- (prt);
+
+\node[note, below=2pt of sel] {herding\,/\,random};
+\node[note, above=2pt of sel] {\itshape rebuild in current $f_\theta$};
+\node[note, below=2pt of mem] {budget $M$};
+
+% headroom above/below the memory-rebuild row
+\coordinate (R2padT) at ($(pool.north)+(0,0.5)$);
+\coordinate (R2padB) at ($(mem.south)+(0,-0.4)$);
+
+% ==================== EVALUATION ====================
+\node[comp] (qry)  at (1, -7.74)   {Query $x$};
+\node[comp] (bb2)  at (4.8, -7.74) {Backbone $f_\theta$};
+\node[abl]  (rdo)  at (8.6, -7.74) {Readout};
+\node[comp] (pred) at (12, -7.74)  {$\hat{y}$};
+
+\draw[flow] (qry) -- (bb2);
+\draw[flow] (bb2) -- (rdo);
+\draw[flow] (rdo) -- (pred);
+
+\node[note, below=2pt of rdo] {NME\,/\,head-logit};
+
+% headroom above/below the evaluation row
+\coordinate (R3padT) at ($(qry.north)+(0,0.5)$);
+\coordinate (R3padB) at ($(rdo.south)+(0,-0.4)$);
+
+% ==================== INTER-REGION CONNECTIONS ====================
+% Memory feeds replay samples -- jog routed through the neutral band
+% between the two panel borders, offset entry point clears "b samples"
+\draw[back] (mem.north) -- ++(0, 1.13) -| ($(rpl.south)+(-1.0,0)$);
+% Prototypes supply the readout -- jog routed through the neutral band
+% between the two panel borders
+\draw[back] (prt.south) -- ++(0, -1.05) -| (rdo.north);
+
+% ==================== REGION BACKGROUNDS ====================
+\begin{scope}[on background layer]
+  \node[region, fit=(data)(rpl)(loss)(tch)(R1pad)]            (R1) {};
+  \node[region, fit=(pool)(prt)(R2padT)(R2padB)]               (R2) {};
+  \node[region, fit=(qry)(pred)(R3padT)(R3padB)]                (R3) {};
+\end{scope}
+
+\node[rlabel, anchor=north west]
+  at ([shift={(5pt,-5pt)}]R1.north west)
+  {Training (task $t \geq 1$)};
+\node[rlabel, anchor=north west]
+  at ([shift={(5pt,-5pt)}]R2.north west)
+  {Memory rebuild (after each task)};
+\node[rlabel, anchor=north west]
+  at ([shift={(5pt,-5pt)}]R3.north west)
+  {Evaluation};
+
+\end{tikzpicture}
+
+\caption{Overview of the reference replay configuration.  Orange boxes mark
+the four components varied in the ablation study: classifier head, training
+loss, exemplar selection, and evaluation readout; the reference choice is
+listed first in each annotation.  Dashed arrows show the memory feedback loop
+and prototype supply.  The resource sweeps additionally vary the memory
+budget~$M$ and the per-minibatch retrieval count~$b$.}
+\label{fig:system-overview}
+\end{figure}
