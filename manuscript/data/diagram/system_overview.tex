@@ -1,132 +1,130 @@
+
 % --- System overview: Uniform Herding configuration ---
-% Place with:  \input{data/diagram/system_overview.tex}
-% Preamble requires:
-%   \usepackage{tikz}
-%   \usetikzlibrary{arrows.meta, fit, backgrounds, positioning}
+% Included with: \input{data/diagram/system_overview.tex}
+% Required TikZ libraries are loaded by main.tex.
 
 \definecolor{compfill}{RGB}{240,244,248}
 \definecolor{compdraw}{RGB}{140,155,170}
-\definecolor{ablfill}{RGB}{255,243,224}
-\definecolor{abldraw}{RGB}{230,126,34}
+\definecolor{choicefill}{RGB}{255,243,224}
+\definecolor{choicedraw}{RGB}{230,126,34}
 \definecolor{arrowcol}{RGB}{90,90,90}
 \definecolor{notecol}{RGB}{120,120,120}
 \definecolor{regionfill}{RGB}{250,250,250}
 \definecolor{regiondraw}{RGB}{210,210,210}
-\definecolor{labelcol}{RGB}{150,150,150}
+\definecolor{labelcol}{RGB}{110,120,130}
 \definecolor{mergecol}{RGB}{160,170,180}
-\begin{figure}[t]
+
+\begin{figure}[tbp]
 \centering
+
 \begin{tikzpicture}[
   scale=0.9,
   >=Stealth,
-  node distance=4pt,
   base/.style={
-    draw, rounded corners=2pt, minimum height=8.5mm,
-    minimum width=24mm, align=center, inner sep=3pt,
-    font=\sffamily\small, line width=0.5pt
+    draw, rounded corners=2pt, minimum height=7.5mm,
+    minimum width=24mm, align=center, inner sep=2.5pt,
+    font=\sffamily\scriptsize, line width=0.5pt
   },
   comp/.style={base, fill=compfill, draw=compdraw},
-  abl/.style={base, fill=ablfill, draw=abldraw, line width=0.7pt},
+  choice/.style={base, fill=choicefill, draw=choicedraw, line width=0.7pt},
   flow/.style={->, line width=0.55pt, draw=arrowcol},
   back/.style={flow, dashed},
-  note/.style={font=\sffamily\tiny, text=notecol},
+  note/.style={font=\sffamily\tiny, text=notecol, align=center, text width=23mm},
   region/.style={
     draw=regiondraw, fill=regionfill, rounded corners=4pt,
-    inner sep=9pt, line width=0.3pt
+    inner sep=8pt, line width=0.3pt
   },
   rlabel/.style={font=\sffamily\scriptsize\bfseries, text=labelcol},
 ]
 
 % ==================== TRAINING ====================
 \node[comp] (data) at (0, 0)       {Task $t$ data};
-\node[comp] (rpl)  at (0, -1.3)    {Replay};
+\node[comp] (rpl)  at (0, -1.05)   {Replay from active set};
 \node[circle, fill=mergecol, inner sep=1.5pt]
-             (mrg) at (3, -0.65)   {};
-\node[comp] (bb)   at (6, -0.65)   {Backbone $f_\theta$};
-\node[abl]  (head) at (9, -0.65)   {Head};
-\node[abl]  (loss) at (12, -0.65)  {Loss};
-\node[comp] (tch)  at (12, -2.1)   {Teacher $f_{\theta'}$};
+             (mrg) at (2.8, -0.52) {};
+\node[comp] (bb)   at (5.2, -0.52)   {Backbone $f_\theta$};
+\node[choice] (head) at (8.2, -0.52) {Head};
+\node[choice] (loss) at (11.2, -0.52) {Loss};
+\node[comp] (tch)  at (11.2, -1.55) {Teacher logits};
 
-\draw[flow] (data.east) -- (mrg);
-\draw[flow] (rpl.east)  -- (mrg);
-\draw[flow] (mrg)  -- (bb);
-\draw[flow] (bb)   -- (head);
-\draw[flow] (head) -- (loss);
-\draw[flow] (tch)  -- (loss);
+\draw[flow] (data.east) -- (mrg.west);
+\draw[flow] (rpl.east)  -- (mrg.west);
+\draw[flow] (mrg.east)  -- (bb.west);
+\draw[flow] (bb.east)   -- (head.west);
+\draw[flow] (head.east) -- (loss.west);
+\draw[flow] (tch.north) -- (loss.south);
 
-\node[note, below=2pt of head] {cosine-margin\,/\,linear};
-\node[note, above=2pt of loss] {CE + KD\,/\,CE only};
-\node[note, below=2pt of rpl]  {$b$ samples};
+\node[note, anchor=north west] (rplnote) at ($(rpl.south) + (-10pt, -2pt)$) {$b$ samples per minibatch};
+\node[note, below=2pt of head] (headnote) {cosine-margin / linear};
+\node[note, above=2pt of loss] (lossnote) {CE + KD / CE only};
 
-% headroom reserved above the training row, for the panel title
-\coordinate (R1pad) at ($(data.north)+(0,0.5)$);
+\coordinate (R1pad) at ($(data.north)+(0,0.42)$);
 
-% ==================== MEMORY REBUILD ====================
-\node[comp] (pool) at (1, -4.7)    {Class pools};
-\node[abl]  (sel)  at (4.8, -4.7)  {Selection};
-\node[comp] (mem)  at (8.6, -4.7)  {Memory $\mathcal{M}$};
-\node[comp] (prt)  at (12, -4.7)   {Prototypes $\hat{\mu}_c$};
+% ==================== MEMORY REFRESH ====================
+\node[comp] (cand) at (0, -3.45) {Candidate pools $\mathcal{Q}_c$};
+\node[choice] (sel) at (3.35, -3.45) {Herding / random};
+\node[comp] (active) at (6.75, -3.45) {Active set $\mathcal{E}$};
+\node[comp] (proto) at (10.7, -3.45) {NME prototypes};
 
-\draw[flow] (pool) -- (sel);
-\draw[flow] (sel)  -- (mem);
-\draw[flow] (mem)  -- (prt);
+\draw[flow] (cand.east) -- (sel.west);
+\draw[flow] (sel.east) -- (active.west);
+\draw[flow] (active.east) -- (proto.west);
 
-\node[note, below=2pt of sel] {herding\,/\,random};
-\node[note, above=2pt of sel] {\itshape rebuild in current $f_\theta$};
-\node[note, below=2pt of mem] {budget $M$};
+\node[note, below=2pt of cand] {current stream + persistent candidates};
+\node[note, below=2pt of sel] {rebuild in current $f_\theta$};
+\node[note, below=2pt of active] {active budget $M$; replay source};
+\node[note, below=2pt of proto, text width=17mm] {selected-exemplar means};
 
-% headroom above/below the memory-rebuild row
-\coordinate (R2padT) at ($(pool.north)+(0,0.5)$);
-\coordinate (R2padB) at ($(mem.south)+(0,-0.4)$);
+\coordinate (R2padT) at ($(cand.north)+(0,0.35)$);
+\coordinate (R2padB) at ($(active.south)+(0,-0.68)$);
 
 % ==================== EVALUATION ====================
-\node[comp] (qry)  at (1, -7.74)   {Query $x$};
-\node[comp] (bb2)  at (4.8, -7.74) {Backbone $f_\theta$};
-\node[abl]  (rdo)  at (8.6, -7.74) {Readout};
-\node[comp] (pred) at (12, -7.74)  {$\hat{y}$};
+\node[comp] (qry)  at (0, -5.95)    {Query $x$};
+\node[comp] (bb2)  at (3.35, -5.95) {Backbone $f_\theta$};
+\node[choice] (rdo) at (6.75, -5.95) {Readout};
+\node[comp] (pred) at (10.7, -5.95)  {$\hat{y}$};
 
-\draw[flow] (qry) -- (bb2);
-\draw[flow] (bb2) -- (rdo);
-\draw[flow] (rdo) -- (pred);
+\draw[flow] (qry.east) -- (bb2.west);
+\draw[flow] (bb2.east) -- (rdo.west);
+\draw[flow] (rdo.east) -- (pred.west);
 
-\node[note, below=2pt of rdo] {NME\,/\,head-logit};
+\node[note, below=2pt of rdo] {NME / head-logit};
 
-% headroom above/below the evaluation row
-\coordinate (R3padT) at ($(qry.north)+(0,0.5)$);
-\coordinate (R3padB) at ($(rdo.south)+(0,-0.4)$);
+\coordinate (R3padT) at ($(qry.north)+(0,0.42)$);
+\coordinate (R3padB) at ($(rdo.south)+(0,-0.42)$);
 
 % ==================== INTER-REGION CONNECTIONS ====================
-% Memory feeds replay samples -- jog routed through the neutral band
-% between the two panel borders, offset entry point clears "b samples"
-\draw[back] (mem.north) -- ++(0, 1.13) -| ($(rpl.south)+(-1.0,0)$);
-% Prototypes supply the readout -- jog routed through the neutral band
-% between the two panel borders
-\draw[back] (prt.south) -- ++(0, -1.05) -| (rdo.north);
+% Replay samples come only from the selected active set.
+\draw[back] (active.north) -- ++(0, 0.5) -| (rpl.south);
+% Prototypes provide the NME readout at evaluation.
+% Start point offset clears the "selected-exemplar means" caption.
+\draw[back] ($(proto.south)+(-1.15,0)$) -- ++(0, -1.15) -| (rdo.north);
 
 % ==================== REGION BACKGROUNDS ====================
 \begin{scope}[on background layer]
-  \node[region, fit=(data)(rpl)(loss)(tch)(R1pad)]            (R1) {};
-  \node[region, fit=(pool)(prt)(R2padT)(R2padB)]               (R2) {};
-  \node[region, fit=(qry)(pred)(R3padT)(R3padB)]                (R3) {};
+  \node[region, fit=(data)(rpl)(loss)(tch)(R1pad)(rplnote)(headnote)(lossnote)] (R1) {};
+  \node[region, fit=(cand)(proto)(R2padT)(R2padB)] (R2) {};
+  \node[region, fit=(qry)(pred)(R3padT)(R3padB)] (R3) {};
 \end{scope}
 
 \node[rlabel, anchor=north west]
   at ([shift={(5pt,-5pt)}]R1.north west)
-  {Training (task $t \geq 1$)};
+  {Training ($t\geq1$)};
 \node[rlabel, anchor=north west]
   at ([shift={(5pt,-5pt)}]R2.north west)
-  {Memory rebuild (after each task)};
+  {Memory refresh (after each task)};
 \node[rlabel, anchor=north west]
   at ([shift={(5pt,-5pt)}]R3.north west)
   {Evaluation};
 
 \end{tikzpicture}
 
-\caption{Overview of the Uniform Herding replay configuration.  Orange boxes mark
-the four components varied in the ablation study: classifier head, training
-loss, exemplar selection, and evaluation readout; the Uniform Herding choice
-is listed first in each annotation.  Dashed arrows show the memory feedback loop
-and prototype supply.  The resource sweeps additionally vary the memory
-budget~$M$ and the per-minibatch retrieval count~$b$.}
+\caption{Overview of Uniform Herding. At each task boundary, class-specific
+candidate pools are refreshed in the current representation and herding selects
+the active replay set with budget $M$. Replay draws only from this active set,
+while candidate storage is bounded by $\rho M$ at completed boundaries; the
+retrieval count is $b$ per minibatch. Orange boxes indicate choices examined in
+the within-method comparisons. Dashed arrows show the replay and prototype
+feedback paths.}
 \label{fig:system-overview}
 \end{figure}

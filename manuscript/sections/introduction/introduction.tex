@@ -26,19 +26,18 @@ storage are distinct quantities.
 We compare Uniform Herding with a faithful iCaRL implementation and a static
 replay bank on CIFAR-100 split into ten class-incremental tasks.  iCaRL herds a
 class when it arrives, preserves the resulting priority order, and truncates
-that order as the class quota decreases.  The main comparison therefore
-evaluates complete protocols: the methods also differ in training objective,
+that order as the class quota decreases.  Accordingly, the main comparison is
+between complete protocols: the methods also differ in training objective,
 readout, and retained candidate storage.  Targeted within-method comparisons
 then vary prediction rule, selection rule, distillation, and head geometry,
 followed by active-budget and retrieval sweeps.
 
 At the default active budget of 2,000 exemplars and retrieval budget of 64,
 Uniform Herding obtains higher mean final accuracy and lower mean forgetting
-than both baselines.  The supporting analyses show that NME prediction and
-herding are favored within the proposed configuration, distillation mainly
-affects retention, and the active-budget sweep has a larger effect than the
-tested retrieval sweep.  Task-level diagnostics show how these aggregate
-metrics distribute across task age.
+than both baselines.  Within the proposed configuration, NME prediction and
+herding selection yield higher mean final accuracy than their tested
+alternatives, while distillation primarily affects retention.  The active-
+budget sweep also changes the metrics more than the tested retrieval sweep.
 
 \paragraph{Contributions.}
 \begin{itemize}

@@ -8,6 +8,8 @@
 \usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc}
 \usepackage{booktabs}
 \usepackage{graphicx}
+\usepackage{float}
+\usepackage{placeins}
 \usepackage[letterpaper]{geometry}
 \geometry{textwidth=6in,textheight=9in,top=1in,headheight=12pt,headsep=25pt,footskip=30pt}
 \usepackage{natbib}
@@ -218,15 +220,17 @@ $24.87\pm1.11\%$ for iCaRL.  Within the Uniform Herding protocol, replacing NME
 or herding with the tested alternatives lowers mean final accuracy, while
 removing distillation primarily increases forgetting.  Over the tested
 resource range, changing the active budget has a larger effect than changing
-the retrieval budget.  These results characterize the method under the
-evaluated protocol.  The iCaRL comparison is end-to-end and does not isolate
-refresh from its other protocol differences.
+the retrieval budget.  These results are conditional on the evaluated
+protocol: the iCaRL comparison is end-to-end and does not isolate refresh from
+its other protocol differences.
 \end{abstract}
 
 \input{sections/introduction/introduction.tex}
 \input{sections/related_work/related_work.tex}
 \input{sections/method/method.tex}
+\FloatBarrier
 \input{sections/results/results.tex}
+\FloatBarrier
 \input{sections/discussion/discussion.tex}
 \input{sections/conclusion/conclusion.tex}
 

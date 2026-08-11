@@ -90,7 +90,7 @@ def fig1_per_task_accuracy(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
             line.set_linewidth(lw)
         ax_b.set_xlabel("Task\n", color=APPLE["ink"])
         # Shared y-label from panel (a); omit to save horizontal space
-        ax_b.set_title("(b) Component ablations", loc="center")
+        ax_b.set_title("(b) Within-method variants", loc="center")
         ax_b.set_ylim(0, 80)
         finish_axes(ax_b)
 
@@ -207,23 +207,25 @@ def _resource_series(runs: Dict[str, RunResult], keys: List[str], axis: str):
 def fig3_resource_sensitivity(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
     """2x2 grid: {memory, retrieval} x {accuracy, forgetting}."""
     panels = [
-        ("memory", "Memory budget (exemplars)", C.SENSITIVITY_MEMORY_KEYS),
-        ("retrieval", "Retrieval budget (exemplars / step)", C.SENSITIVITY_RETR_KEYS),
+        ("memory", "Active budget (exemplars)", C.SENSITIVITY_MEMORY_KEYS),
+        ("retrieval", "Retrieval budget", C.SENSITIVITY_RETR_KEYS),
     ]
     series = {axis: _resource_series(runs, keys, axis) for axis, _, keys in panels}
 
     with apply_thesis_style():
-        fig, axes = create_figure(width="double", nrows=2, ncols=2, aspect=0.95)
+        fig, axes = create_figure(width="double", nrows=2, ncols=2, aspect=0.55)
         for row, (axis, xlabel, _keys) in enumerate(panels):
             xs, accs, acc_stds, fors, for_stds = series[axis]
             pad = 0.15 * np.ptp(xs) if np.ptp(xs) > 0 else 1.0
 
             ax = axes[row, 0]
             ax.errorbar(xs, accs, yerr=acc_stds, color=C.color_for(REF),
-                        marker="o", markersize=6, linewidth=2.0, capsize=4, elinewidth=1.2)
-            ax.set_xlabel(xlabel + "\n" if row == 0 else xlabel)
+                        marker="o", markersize=5, linewidth=1.8, capsize=3, elinewidth=1.0)
+            ax.set_xlabel(xlabel)
             ax.set_ylabel("Average accuracy (%)")
-            ax.set_title(f"({'a' if axis == 'memory' else 'c'}) {axis.title()} budget — Accuracy", loc="center")
+            letter = "a" if axis == "memory" else "c"
+            title = "Active" if axis == "memory" else "Retrieval"
+            ax.set_title(f"({letter}) {title}: accuracy", loc="center")
             if axis == "retrieval":
                 ax.set_xscale("log", base=2)
                 ax.set_xlim(24, 170)
@@ -236,10 +238,12 @@ def fig3_resource_sensitivity(runs: Dict[str, RunResult], out_dir: Path) -> List
 
             ax = axes[row, 1]
             ax.errorbar(xs, fors, yerr=for_stds, color=PALETTE["wine"],
-                        marker="s", markersize=6, linewidth=2.0, capsize=4, elinewidth=1.2)
-            ax.set_xlabel(xlabel + "\n" if row == 0 else xlabel)
+                        marker="s", markersize=5, linewidth=1.8, capsize=3, elinewidth=1.0)
+            ax.set_xlabel(xlabel)
             ax.set_ylabel("Forgetting (%)")
-            ax.set_title(f"({'b' if axis == 'memory' else 'd'}) {axis.title()} budget — Forgetting", loc="center")
+            letter = "b" if axis == "memory" else "d"
+            title = "Active" if axis == "memory" else "Retrieval"
+            ax.set_title(f"({letter}) {title}: forgetting", loc="center")
             if axis == "retrieval":
                 ax.set_xscale("log", base=2)
                 ax.set_xlim(24, 170)
@@ -341,7 +345,7 @@ def fig5_forgetting_by_age(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
     instead of final accuracy.
     """
     with apply_thesis_style():
-        fig, axes = create_figure(width="double", nrows=1, ncols=2, aspect=0.45)
+        fig, axes = create_figure(width="double", nrows=1, ncols=2, aspect=0.55)
         ax_a, ax_b = axes
 
         # Panel (a): baselines -------------------------------------------------
@@ -376,7 +380,7 @@ def fig5_forgetting_by_age(runs: Dict[str, RunResult], out_dir: Path) -> List[Pa
                 show_ylabel=False,
             )
         ax_b.set_xlabel("Task\n", color=APPLE["ink"])
-        ax_b.set_title("(b) Component ablations", loc="center")
+        ax_b.set_title("(b) Within-method variants", loc="center")
         ax_b.set_ylim(-3, 65)
         finish_axes(ax_b)
 

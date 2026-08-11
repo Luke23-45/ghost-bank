@@ -13,19 +13,20 @@ seed because the trainer's epoch counter was incremented once after the final
 configured epoch; this recording discrepancy does not alter the configured
 schedule.
 
-Unless an ablation changes the relevant component, Uniform Herding uses a
+Unless a variant changes a setting, Uniform Herding uses a
 cosine-margin head (scale 30, margin 0.35), weight imprinting for each new
 task's head rows after task 0, distillation weight 1 at temperature 2, and
 retrieval budget 64.  The no-distillation ablation sets the distillation weight
-to zero; the linear-head ablation replaces the cosine-margin head.  The static
-bank and head-logit ablation use head-logit prediction; all other reported
-configurations use NME prediction.  Uniform Herding replays only its selected
-exemplars.  Its implementation default is $\rho=\texttt{pool\_multiplier}=3$:
+to zero; the linear-head variant replaces the cosine-margin head.  The static
+bank and head-logit variant use head-logit prediction; all replay
+configurations other than these use NME prediction.  The no-replay baseline has
+no replay readout.  Uniform Herding replays only its selected exemplars.  Its
+implementation default is $\rho=\texttt{pool\_multiplier}=3$:
 the candidate pool is bounded by $\rho M$ at completed task boundaries in the
 reported setting, while the current-task stream before a class's first rebuild
 is transient and may exceed that bound.
 
-\begin{table}[t]
+\begin{table}[H]
   \centering
   \caption{Protocol settings shared across runs unless an ablation explicitly
   changes them.}
@@ -43,8 +44,8 @@ is transient and may exceed that bound.
     Training & 70 configured epochs per task; batch size 128; gradient clip 1.0 \\
     Precision & 16-mixed \\
     Random seeds & 1993, 2023, 42 \\
-    Active exemplar budget & 2,000 \\
-    Retrieval budget & 64 \\
+    Active exemplar budget & 2,000 for replay configurations; not used by no replay \\
+    Retrieval budget & 64 for replay configurations; not used by no replay \\
     Candidate multiplier ($\rho$) & 3 for Uniform Herding; implementation default \\
     Replay source & Selected active exemplars; candidate pool used only for refresh \\
     Hardware & Tesla T4 \\
@@ -59,7 +60,8 @@ is transient and may exceed that bound.
 
 For task $i$, reported forgetting is the difference between the best accuracy
 attained on task $i$ during training and its accuracy after the final task.
-Figure~\ref{fig:app-forgetting} gives this quantity for every method and task.
+Figure~\ref{fig:app-forgetting} gives this quantity for every evaluated
+configuration and task.
 The final task has zero forgetting by construction, so the figure separates
 aggregate retention from its distribution over task age.
 
@@ -96,8 +98,8 @@ underlying trajectories from which task-level forgetting is calculated.
 
 Figure~\ref{fig:app-kd-slopes} provides a seed-level view of the stability
 comparison.  For each earlier task and seed, it connects accuracy at
-introduction with final accuracy.  It visualizes the same per-seed measurements
-summarized in the main text and is not an additional statistical test.
+introduction with final accuracy.  It visualizes the per-seed quantities used
+for the stability comparison and is not an additional statistical test.
 
 \begin{figure}[t]
   \centering
@@ -107,6 +109,51 @@ summarized in the main text and is not an additional statistical test.
   accuracy for the same task and seed.}
   \label{fig:app-kd-slopes}
 \end{figure}
+
+\section{Additional Diagnostics}
+\label{app:additional-diagnostics}
+
+The following figures provide supplementary views of the matched within-method
+comparisons and the joint accuracy--forgetting distribution.  The exact
+per-configuration values remain in Tables~\ref{tab:t2-component-ablations}
+and~\ref{tab:t3-resource-sensitivity}.
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=0.90\linewidth]{data/main/figures/fig2_component_attribution.pdf}
+  \caption{Matched per-seed changes relative to Uniform Herding. Negative
+  accuracy changes and positive forgetting changes are unfavorable.}
+  \label{fig:app-component-attribution}
+\end{figure}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=0.90\linewidth]{data/main/figures/fig4_acc_forgetting_scatter.pdf}
+  \caption{Average accuracy versus forgetting for baselines, within-method
+  variants, and resource configurations. Higher accuracy and lower forgetting
+  are preferred. The points do not define a causal trade-off curve.}
+  \label{fig:app-accuracy-forgetting}
+\end{figure}
+
+The task-age diagnostic gives a more detailed view of the forgetting patterns
+summarized by the aggregate metrics.  The static bank incurs approximately
+$51$--$59$ pp forgetting for tasks 0--8, whereas head-logit evaluation incurs
+approximately $27$--$55$ pp.  Uniform Herding ranges from $8.1$ to $30.1$ pp
+over these tasks.  In both adverse configurations, the newest task has higher
+final accuracy than older tasks, so aggregate accuracy can conceal recency bias.
+The zero forgetting value for task 9 is structural: no later task can reduce
+its accuracy under the final-task definition.
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics[width=\linewidth]{data/main/figures/fig5_forgetting_by_age.pdf}
+  \caption{Forgetting by task index for Uniform Herding and two adverse
+  configurations. The final task has zero forgetting by definition because no
+  subsequent task is learned.}
+  \label{fig:app-forgetting-by-age}
+\end{figure}
+
+\clearpage
 
 \section{Seed-Level Outcomes and Compute}
 \label{app:seed-compute}

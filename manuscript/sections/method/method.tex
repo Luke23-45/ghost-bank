@@ -10,6 +10,8 @@ permuted with split seed 13 and remapped to contiguous internal labels.  From
 each training class, 30 images are held out for probing and 20 for validation;
 these images are not inserted into replay storage.
 
+\input{data/diagram/system_overview.tex}
+
 \subsection{Model and Training}
 \label{subsec:model-training}
 
@@ -95,8 +97,8 @@ total storage budget of $M$.
 
 The candidate pool is a bounded implementation buffer, not a claim of uniform
 sampling over the entire historical stream.  Replay draws only from the
-selected sets.  The current runner uses the implementation default $\rho=3$;
-it does not expose this argument as an independently swept configuration.
+selected sets.  The implementation uses the default $\rho=3$; this parameter
+was not independently swept.
 
 \subsection{Replay, Distillation, and Prediction}
 \label{subsec:replay-distillation}
@@ -135,8 +137,8 @@ the final representation, the prediction is
 \hat y(x)=\operatorname*{argmin}_{c\in\mathcal{C}_{T-1}}
 \left\|\bar f_\theta(x)-\bar{\hat\mu}_c^{(T-1)}\right\|_2.
 \]
-The head-logit rule is used only for the designated ablation and for the
-static-bank baseline's native protocol.
+The head-logit rule is used for the designated ablation and for the static-bank
+baseline's native protocol.  The no-replay baseline has no replay readout.
 
 \subsection{Baselines and Supporting Analyses}
 \label{subsec:baselines-supporting}
@@ -158,9 +160,10 @@ The supporting Uniform Herding comparisons change one designated choice at a
 time: KD is removed, NME is replaced with head-logit prediction, the
 cosine-margin head is replaced with a linear head, or herding is replaced with
 random selection.  Resource sensitivity varies $M\in\{500,2000,4000\}$ and
-$b\in\{32,64,128\}$ around the main configuration.  T1 is a comparison of
-complete protocols; it matches the nominal active and retrieval budgets but
-not total retained storage, training objective, or readout across all rows.
+$b\in\{32,64,128\}$ around the main configuration.  T1 compares complete
+protocols.  Among the replay rows, nominal active and retrieval budgets match,
+but total retained storage, training objective, and readout do not; the
+no-replay baseline has neither replay storage nor retrieval.
 
 \subsection{Evaluation Metrics}
 \label{subsec:evaluation-metrics}

@@ -3,8 +3,9 @@
 
 Uniform Herding obtains higher mean final accuracy and lower mean forgetting
 than the faithful iCaRL and static-bank baselines in the evaluated protocol.
-This is a complete-method result: the comparison includes differences in
-refresh policy, training objective, readout, and retained candidate storage.
+This is a complete-method result: the protocols differ in refresh policy,
+training objective, and retained candidate storage; the static-bank baseline
+also uses a different readout.
 It does not estimate the effect of refresh alone.
 
 \subsection{Evidence About the Proposed Configuration}
@@ -17,21 +18,22 @@ supports matching the readout to the selected-exemplar representation in this
 protocol.
 
 The herding-selection variant yields $2.39$ pp higher accuracy than random
-selection; its $1.16$ pp lower mean forgetting is not statistically
-distinguishable with three paired seeds.  Removing KD changes accuracy by
+selection; with three paired seeds, its $1.16$ pp lower mean forgetting should
+not support a stronger claim.  Removing KD changes accuracy by
 $-1.48$ pp but increases forgetting by $11.66$ pp, supporting a retention role
 for distillation under the reported objective.  Replacing the cosine-margin
 head with a linear head has a smaller effect over the tested configuration
 ($-0.79$ pp accuracy and $+0.12$ pp forgetting).  These comparisons describe
-the proposed implementation; they do not establish universal component
-effects.
+the proposed implementation; they do not establish effects beyond this
+configuration.
 
 \subsection{Resource and Storage Implications}
 \label{subsec:resource-allocation}
 
 Reducing the active budget from 2,000 to 500 lowers accuracy by $10.05$ pp and
-raises forgetting by $13.26$ pp, whereas changing retrieval from 64 to 128
-does not improve the mean metrics.  The active-budget sweep also changes the
+raises forgetting by $13.26$ pp.  Changing retrieval from 64 to 128 increases
+mean accuracy by $0.16$ pp but also increases mean forgetting by $0.59$ pp.
+The active-budget sweep also changes the
 candidate capacity because $\rho=3$.  Uniform Herding therefore trades
 additional candidate storage and refresh computation for an active replay set
 of size $M$; it is not a total-storage-matched comparison with iCaRL or the
@@ -49,8 +51,8 @@ implementation default $\rho=3$ was not independently swept.  A newly observed
 class can also retain its full transient stream before its first rebuild, so
 the boundary candidate bound does not describe all mid-task storage.
 
-The iCaRL comparison does not isolate refresh from the objective, readout, and
-storage differences between the complete protocols.  No matched experiment
+The iCaRL comparison does not isolate refresh from the objective and storage
+differences between the complete protocols.  No matched experiment
 holds objective, head, readout, active budget, candidate multiplier, data order,
 and seed set fixed while changing only the refresh policy.  Finally, paired
 supporting comparisons use three matched seeds and should not be treated as

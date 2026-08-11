@@ -77,8 +77,8 @@ def table_T1_master_results(runs: Dict[str, RunResult], out_dir: Path) -> List[P
     rows = []
     for key in C.MASTER_ORDER:
         run = runs[key]
-        mem = run.memory_budget()
-        retr = run.retrieval_budget()
+        mem = "n/a" if key == "baseline" else run.memory_budget()
+        retr = "n/a" if key == "baseline" else run.retrieval_budget()
         rows.append([
             C.short_name(key), C.display_name(key),
             str(mem) if mem is not None else "—",
@@ -198,10 +198,12 @@ def table_A1_protocol(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
 
     def budgets(axis: str) -> str:
         if axis == "memory":
-            mem = {runs[k].memory_budget(): k for k in C.MASTER_ORDER if runs[k].memory_budget() is not None}
+            mem = {runs[k].memory_budget(): k for k in C.MASTER_ORDER
+                   if k != "baseline" and runs[k].memory_budget() is not None}
             parts = []
             for value in sorted(mem):
-                keys = [k for k in C.MASTER_ORDER if runs[k].memory_budget() == value]
+                keys = [k for k in C.MASTER_ORDER
+                        if k != "baseline" and runs[k].memory_budget() == value]
                 names = ", ".join(C.short_name(k) for k in keys)
                 parts.append(f"{value} ({names})")
             return "; ".join(parts)
@@ -241,10 +243,10 @@ def table_A1_protocol(runs: Dict[str, RunResult], out_dir: Path) -> List[Path]:
         ["Batch size", f"{data_cfg.get('batch_size')}"],
         ["Precision", f"{train_cfg.get('precision')}"],
         ["Seeds", "1993, 2023, 42"],
-        ["Exemplar budgets", budgets("memory")],
-        ["Retrieval budgets", budgets("retrieval")],
+        ["Exemplar budgets", f"{budgets('memory')}; not used by B0"],
+        ["Retrieval budgets", f"{budgets('retrieval')}; not used by B0"],
         ["Knowledge distillation", f"weight {kd_row}, temperature {kd_temp}{kd_note}"],
-        ["Evaluation protocol", "NME for B0/B1/B3/a1-a4; head-logit for B2 (native protocol)"],
+        ["Evaluation protocol", "NME for B1/B3/a1-a4; head-logit for B2; direct classifier prediction for B0"],
         ["Hardware", f"{meta.get('device')}"],
         ["Software", f"torch {meta.get('torch')}, pytorch-lightning "
                      f"{meta.get('pytorch_lightning')}, python {meta.get('python')}"],
