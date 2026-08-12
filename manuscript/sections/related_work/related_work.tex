@@ -1,64 +1,41 @@
+
 \section{Related Work}
 \label{sec:related-work}
 
 \subsection{Class-Incremental Learning}
 \label{subsec:related-cil}
 
-Class-incremental learning has been approached through parameter
-regularization, constrained optimization, distillation, and replay.  Elastic
-Weight Consolidation and Synaptic Intelligence protect parameters estimated to
-be important for prior tasks~\cite{kirkpatrick2017ewc,zenke2017si}.  GEM and
-A-GEM constrain updates using episodic-memory gradients~\cite{lopezpaz2017gem,chaudhry2019agem}.
-Learning without Forgetting preserves old outputs by distillation without
-retaining old examples~\cite{li2016lwf}.  Uniform Herding belongs to the
-replay-based setting and focuses on how exemplar refresh interacts with the
-active replay budget.
+Incremental class settings of continual learning fall into the four families.  EWC and Synaptic Intelligence penalise changes to parameters deemed important for earlier tasks~\cite{kirkpatrick2017ewc,zenke2017si}; GEM and A-GEM constrain gradient updates with episodic memory~\cite{lopezpaz2017gem,chaudhry2019agem}. Without stored data, Learning in absence of Forgetting distils old-task logits from the previous model~\cite{li2016lwf}.  Uniform Herding sits in the replay family and studies how exemplar refresh interacts with the active budget constraint.
 
 \subsection{Replay and Exemplar Selection}
 \label{subsec:related-replay}
 
-Experience replay retains a bounded subset of prior data and interleaves it
-with new-task training~\cite{rolnick2019er,chaudhry2019tiny}.  iCaRL provides
-an influential class-incremental exemplar template: it uses herding to select
-prioritized exemplars, replays them during training, and predicts with a
-nearest-mean-of-exemplars rule~\cite{rebuffi2017icarl}.  The greedy herding
-rule approximates a class mean with selected samples~\cite{welling2009herding}.
-Other methods formulate selection around gradient diversity or expected
-interference~\cite{aljundi2019gss,aljundi2019mir}.
+Experience replay stores a bounded subset of earlier data and mixes them into each
+new task's training~\cite{rolnick2019er,chaudhry2019tiny}.  iCaRL combine
+greedy herding with exemplar replay and nearest-mean-of-exemplars (NME)
+prediction~\cite{rebuffi2017icarl}; the herding step greedily builds a set of exemplars whose sample mean tracks the class
+mean~\cite{welling2009herding}.  GSS and MIR select exemplars by gradient
+diversity and expected interference,
+respectively~\cite{aljundi2019gss,aljundi2019mir}.
 
-Uniform Herding shares iCaRL's fixed-total active exemplar allocation and greedy
-selection primitive, but changes when old classes are refreshed.  After each task it
-reselects every observed class in the current representation from its bounded
-candidate pool.  iCaRL instead herds a class on arrival and later retains a
-prefix of that prioritized list as the quota decreases.  The comparison in
-this paper is consequently between complete replay protocols; it does not
-isolate refresh while holding every other method choice fixed.
+Uniform Herding follows the same total active budget and greedy herding as
+iCaRL but changes the refresh schedule.  It utilises a bounded candidate pool for rehering every observed class in the current feature space following each task. iCaRL herds a class only once on its arrival, and after this it truncates the ranked list
+as the per-class quota shrinks.  Thus, the comparison is between
+two complete protocols, and it does not isolate refresh from the other
+differences.
 
 \subsection{Distillation, Classifiers, and Readouts}
 \label{subsec:related-readout}
+ICaRL distils with a sigmoid binary of per-class cross-entropy on old-class
+targets~\cite{rebuffi2017icarl}; Uniform Herding pairs cross-entropy on all
+classes with a temperature-scaled softmax KL term constrained to old classes.
 
-Distillation is frequently paired with replay to preserve old responses.
-iCaRL combines output distillation with exemplar replay and NME
-classification~\cite{rebuffi2017icarl}; Uniform Herding uses cross-entropy
-with temperature-scaled softmax KL on old classes.  The two objectives are
-related but not identical: iCaRL's original old-class targets use sigmoid
-binary cross-entropy, whereas Uniform Herding uses a softmax KL term.
+Classifier choice determines the bias between old and new classes.  LUCIR replaces the linear head with a normalised cosine classifier and a margin
+loss~\cite{hou2019lucir}; To reduce the new-class bias, BiC and Weight Aligning post-correct the classifier outputs~\cite{wu2019bic,zhao2020wa}.
+The learned head is resolved by prototype classifiers: iCaRL makes predictions based on exemplar means, and FeCAM expands this using class-covariance weighting~\cite{rebuffi2017icarl,goswami2023fecam}.  Our ablations test
+NME vs.\ head-logit prediction, distillation, and head geometry within a
+single training protocol.  The evaluation metrics---average accuracy, backward
+transfer~\cite{lopezpaz2017gem}, and average
+forgetting~\cite{chaudhry2019tiny}---are defined in
+Section~\ref{subsec:evaluation-metrics}.
 
-Classifier design is another source of incremental bias.  LUCIR combines a
-normalized cosine classifier with a margin-based incremental objective~\cite{hou2019lucir};
-BiC and Weight Aligning explicitly correct or align learned classifier
-outputs~\cite{wu2019bic,zhao2020wa}.  Prototype-based classifiers provide a
-separate readout: iCaRL predicts from exemplar means, while FeCAM adds
-covariance structure to class prototypes~\cite{rebuffi2017icarl,goswami2023fecam}.
-Our within-method comparisons separate NME prediction, head-logit prediction,
-distillation, and head geometry under the stated training protocol.
-
-\subsection{Forgetting and Stability Metrics}
-\label{subsec:related-metrics}
-
-The accuracy matrix used in continual learning supports average accuracy and
-backward transfer, as formalized with GEM~\cite{lopezpaz2017gem}.  Average
-forgetting summarizes the decline of each old task from its best observed
-accuracy to its final accuracy~\cite{chaudhry2019tiny}.  We report all three
-quantities so that final accuracy can be read together with retention and
-backward transfer.

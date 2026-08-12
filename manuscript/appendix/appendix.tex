@@ -1,6 +1,8 @@
 \section{Reproducibility Details}
 \label{app:reproducibility}
 
+The source code to reproduce all experiments is available at \url{https://github.com/neryva-lab/uniform-herding}.
+
 All experiments used CIFAR-100 in a fixed ten-task class-incremental
 partition of ten classes per task.  The class partition was determined by split
 seed 13 and shared by all runs; the three reported seeds therefore vary
@@ -65,7 +67,7 @@ configuration and task.
 The final task has zero forgetting by construction, so the figure separates
 aggregate retention from its distribution over task age.
 
-\begin{figure}[t]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=\linewidth]{data/appendix/figures/figA1_forgetting_heatmap.pdf}
   \caption{Per-task forgetting, in percentage points, for all evaluated
@@ -81,19 +83,20 @@ iCaRL.  Row $i$, column $t$ is the accuracy on task $i$ after learning through
 task $t$; cells with $i>t$ are undefined and omitted.  These matrices are the
 underlying trajectories from which task-level forgetting is calculated.
 
-\begin{figure}[t]
+\begin{figure}[htbp]
   \centering
-  \includegraphics[width=\linewidth]{data/appendix/figures/figA2_evolution_reference.pdf}
-  \caption{Task-evolution accuracy matrix for Uniform Herding with NME
-  prediction.}
-  \label{fig:app-uniform-evolution}
-\end{figure}
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\linewidth]{data/appendix/figures/figA3_evolution_icarl.pdf}
-  \caption{Task-evolution accuracy matrix for iCaRL.}
-  \label{fig:app-icarl-evolution}
+  \begin{minipage}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{data/appendix/figures/figA2_evolution_reference.pdf}
+    \caption{Task-evolution accuracy matrix for Uniform Herding with NME prediction.}
+    \label{fig:app-uniform-evolution}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.48\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{data/appendix/figures/figA3_evolution_icarl.pdf}
+    \caption{Task-evolution accuracy matrix for iCaRL.}
+    \label{fig:app-icarl-evolution}
+  \end{minipage}
 \end{figure}
 
 Figure~\ref{fig:app-kd-slopes} provides a seed-level view of the stability
@@ -101,7 +104,7 @@ comparison.  For each earlier task and seed, it connects accuracy at
 introduction with final accuracy.  It visualizes the per-seed quantities used
 for the stability comparison and is not an additional statistical test.
 
-\begin{figure}[t]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=\linewidth]{data/appendix/figures/figA4_stability_slopes.pdf}
   \caption{Seed-level task trajectories for Uniform Herding and the
@@ -118,7 +121,7 @@ comparisons and the joint accuracy--forgetting distribution.  The exact
 per-configuration values remain in Tables~\ref{tab:t2-component-ablations}
 and~\ref{tab:t3-resource-sensitivity}.
 
-\begin{figure}[tbp]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.90\linewidth]{data/main/figures/fig2_component_attribution.pdf}
   \caption{Matched per-seed changes relative to Uniform Herding. Negative
@@ -126,31 +129,13 @@ and~\ref{tab:t3-resource-sensitivity}.
   \label{fig:app-component-attribution}
 \end{figure}
 
-\begin{figure}[tbp]
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=0.90\linewidth]{data/main/figures/fig4_acc_forgetting_scatter.pdf}
   \caption{Average accuracy versus forgetting for baselines, within-method
   variants, and resource configurations. Higher accuracy and lower forgetting
   are preferred. The points do not define a causal trade-off curve.}
   \label{fig:app-accuracy-forgetting}
-\end{figure}
-
-The task-age diagnostic gives a more detailed view of the forgetting patterns
-summarized by the aggregate metrics.  The static bank incurs approximately
-$51$--$59$ pp forgetting for tasks 0--8, whereas head-logit evaluation incurs
-approximately $27$--$55$ pp.  Uniform Herding ranges from $8.1$ to $30.1$ pp
-over these tasks.  In both adverse configurations, the newest task has higher
-final accuracy than older tasks, so aggregate accuracy can conceal recency bias.
-The zero forgetting value for task 9 is structural: no later task can reduce
-its accuracy under the final-task definition.
-
-\begin{figure}[tbp]
-  \centering
-  \includegraphics[width=\linewidth]{data/main/figures/fig5_forgetting_by_age.pdf}
-  \caption{Forgetting by task index for Uniform Herding and two adverse
-  configurations. The final task has zero forgetting by definition because no
-  subsequent task is learned.}
-  \label{fig:app-forgetting-by-age}
 \end{figure}
 
 \clearpage
@@ -163,7 +148,7 @@ seed.  Values are percentages.  The table makes the reported means and
 standard deviations auditable without treating the three training seeds as
 independent task-level observations.
 
-\begin{table}[t]
+\begin{table}[htbp]
   \centering
   \caption{Per-seed final average accuracy, forgetting, and backward transfer.}
   \label{tab:app-seeds}
@@ -216,7 +201,7 @@ Table~\ref{tab:app-compute} reports elapsed wall-clock time per run on a Tesla
 T4.  These timings describe the implementation and hardware used here; they
 are not hardware-independent efficiency comparisons.
 
-\begin{table}[t]
+\begin{table}[htbp]
   \centering
   \caption{Wall-clock time per run in seconds (mean $\pm$ standard deviation
   across three seeds), measured on a Tesla T4.}
@@ -250,7 +235,7 @@ classes.  Table~\ref{tab:app-quotas} lists the resulting per-class quotas.
 When the budget is not divisible by the number of observed classes, floor
 rounding assigns the remainder to the first classes in identifier order.
 
-\begin{table}[t]
+\begin{table}[htbp]
   \centering
   \caption{Per-class active exemplar quota after each task. Ranges indicate
   the one-exemplar difference induced by floor rounding.}

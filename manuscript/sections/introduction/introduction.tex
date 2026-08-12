@@ -1,51 +1,29 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Class-incremental learning requires a model to learn disjoint groups of
-classes sequentially and later classify all observed classes without task
-identity.  Because prior training data cannot usually be retained in full,
-replay stores a bounded set of exemplars.  The relevant constraint is not only
-the number of active exemplars: examples selected in an earlier feature space
-may become less representative as the model changes.
+In the replay based incremental class learning, a small exemplar set represents whole training history. The backbone changes every new task, thus the exemplars selected under with old features no longer well approximate the class distributions during training. Current state of the art methods integrate selection, refresh timing, training objective, readout into one protocol, hence a performance gap between methods can not isolate the refresh rule with everything else in the method.
 
-Replay systems combine several decisions that affect this process.  These
-include how the active budget is allocated, when exemplars are refreshed, how
-they are selected, how replay enters the loss, and how predictions are made.
-When these decisions are bundled, a performance difference can reflect the
-memory contents, the training objective, or the readout rather than the
-refresh rule itself.
+We propose Uniform Herding.  After each task is completed, it then divides the active budget equally among all the observed classes. And rebuilds each class's exemplar set using the greedy herding in the current feature space. Examples for reconstruction come from the active memory (bounded set of examples, retained through the tasks). Active means in the replay experience.
 
-We propose Uniform Herding, a replay method that allocates an active exemplar
-budget uniformly across observed classes and refreshes every class after each
-task in the current feature representation.  The method uses greedy herding
-to construct the active set from a bounded candidate pool.  The active set is
-the source of replay; the candidate pool is retained only to provide examples
-for later refreshes.  Thus, the active budget and the total retained candidate
-storage are distinct quantities.
+We then compare Uniform Herding with a faithful implementation of iCaRL and a
+static replay bank on the CIFAR-100 dataset split into ten tasks. Upon arrival for iCaRL, each class was herded in a respective manner, with previous priority being maintained by truncating classes from the front that exceeded quota shrinkages per class. Each of the comparisons we make with Uniform Herding is  end-to-end, not the refresh timings but also methods for objective, readout and storage are also different. We also compare ablations of Uniform Herding on prediction rule, selection rule, distillation and head geometry, in addition to active-budget and retrieval sweeps.
 
-We compare Uniform Herding with a faithful iCaRL implementation and a static
-replay bank on CIFAR-100 split into ten class-incremental tasks.  iCaRL herds a
-class when it arrives, preserves the resulting priority order, and truncates
-that order as the class quota decreases.  Accordingly, the main comparison is
-between complete protocols: the methods also differ in training objective,
-readout, and retained candidate storage.  Targeted within-method comparisons
-then vary prediction rule, selection rule, distillation, and head geometry,
-followed by active-budget and retrieval sweeps.
-
-At the default active budget of 2,000 exemplars and retrieval budget of 64,
+At the default budgets ($M{=}2{,}000$ active exemplars, $b{=}64$ retrieval),
 Uniform Herding obtains higher mean final accuracy and lower mean forgetting
-than both baselines.  Within the proposed configuration, NME prediction and
-herding selection yield higher mean final accuracy than their tested
-alternatives, while distillation primarily affects retention.  The active-
-budget sweep also changes the metrics more than the tested retrieval sweep.
+than both baselines.  NME prediction and herding selection each outperform
+their tested alternatives on mean accuracy; distillation primarily affects
+forgetting.  The active-budget sweep changes the metrics more than the
+retrieval sweep.
 
 \paragraph{Contributions.}
 \begin{itemize}
-  \item We define Uniform Herding, a representation-refresh replay method with
-  uniform active class allocation and a bounded candidate pool.
-  \item We compare it with faithful iCaRL and static-bank baselines at a common
-  nominal active budget and retrieval count, while making their objective,
-  readout, and storage differences explicit.
-  \item We characterize the proposed configuration with targeted within-method
-  comparisons and active-budget and retrieval sensitivity analyses.
+  \item We define Uniform Herding, which divides the active budget uniformly
+  across classes and refreshes the exemplar set from a bounded candidate pool
+  in the current representation after each task.
+  \item We compare it against iCaRL and a static bank at matched active and
+  retrieval budgets, with all protocol differences stated.
+  \item We ablate prediction rule, selection rule, distillation, and head
+  geometry, and vary active-budget and retrieval sensitivity within the
+  proposed protocol.
 \end{itemize}
+

@@ -1,14 +1,8 @@
 \section{Uniform Herding and Experimental Setup}
 \label{sec:method}
 
-We study class-incremental learning on CIFAR-100 under a bounded active
-exemplar budget.  Training proceeds over tasks $t=0,\ldots,T-1$.  Each task
-introduces a disjoint set of $C_{\mathrm{new}}$ classes, and evaluation after
-task $t$ covers all classes observed so far without task identity.  In the
-main experiments, $T=10$ and $C_{\mathrm{new}}=10$.  The CIFAR-100 classes are
-permuted with split seed 13 and remapped to contiguous internal labels.  From
-each training class, 30 images are held out for probing and 20 for validation;
-these images are not inserted into replay storage.
+We evaluated the incremental class learning on the CIFAR-100 dataset with a bounded active exemplar budget.  Training runs through tasks $t=0,\ldots,T-1$. Each task brings a disjoint set of $C_{\mathrm{new}}$ classes, and evaluation after task $t$ covers all classes seen so far, without task identity. In the main experiments, $T=10$ and $C_{\mathrm{new}}=10$.  We permute the CIFAR-100
+classes with a split of seed 13 and remap them to contiguous internal labels.  From each training class, we keep 30 images for probing and 20 for validation. None enter replay storage.
 
 \input{data/diagram/system_overview.tex}
 
@@ -16,8 +10,8 @@ these images are not inserted into replay storage.
 \label{subsec:model-training}
 
 The learner is a ResNet-18 feature extractor $f_\theta:\mathcal{X}\to
-\mathbb{R}^{512}$ with base width 64 and no dropout.  The main configuration
-uses a cosine-margin classifier.  For feature vector $f_\theta(x)$, classifier
+\mathbb{R}^{512}$ with base width 64 and no dropout.  The default classifier
+is cosine-margin.  For feature vector $f_\theta(x)$, classifier
 weight $w_j$, scale $s$, margin $m$, and target $y$, its logits are
 \[
 z_j(x;y)=
@@ -26,16 +20,14 @@ s\left\langle \bar f_\theta(x),\bar w_j\right\rangle-sm, & j=y,\\
 s\left\langle \bar f_\theta(x),\bar w_j\right\rangle, & j\neq y,
 \end{cases}
 \]
-where $\bar u=u/\|u\|_2$.  We use $s=30$ and $m=0.35$.  When a task is
-introduced, the classifier head is expanded by 10 rows.  After the first task,
-the new rows are imprinted from normalized class-mean features before
-optimization.
+where $\bar u=u/\|u\|_2$.  We set $s=30$ and $m=0.35$.  Each new task
+increased the classifier head by 10 rows.  Prior to optimization, we imprint the new rows from normalized class-mean features starting with task 1.
 
-Training uses SGD with learning rate 0.1, momentum 0.9, weight decay
+We train with SGD at learning rate 0.1, momentum 0.9, weight decay
 $5\times10^{-4}$, batch size 128, gradient clipping at 1.0, mixed precision,
-and 70 configured epochs per task.  Training images use random crop with
-padding 4 and horizontal flip; evaluation uses normalization only.  Reported
-runs use seeds 1993, 2023, and 42.
+and 70 epochs per task.  Training augmentation is random crop (padding 4) and
+horizontal flip; evaluation applies normalization only.  Our runs use seeds
+1993, 2023, and 42.
 
 \subsection{Active Allocation and Candidate Refresh}
 \label{subsec:active-candidate-memory}
@@ -50,10 +42,9 @@ q_{c_i}^{(t)}=
 +\mathbf{1}\{i<M\bmod C_t\},
 \qquad i=0,\ldots,C_t-1.
 \]
-For the reported runs, every class has enough candidates and the selected
-sets therefore sum to $M$ at each completed task boundary.  In general, the
-implementation selects at most $q_c^{(t)}$ items when a candidate pool is
-smaller than its quota.
+In our experiments, every class has enough candidates, therefore the selected sets sum
+to $M$ at each completed task boundary.  When a candidate pool falls short of its
+quota, we select at most $q_c^{(t)}$ items.
 
 At the start of task $t$, let $\mathcal{B}_c^{(t-1)}$ denote the persistent
 candidate pool for an old class and let $\mathcal{P}_{c,\mathrm{cur}}^{(t)}$
@@ -66,10 +57,10 @@ boundary, the candidate set for class $c$ is
 \mu_c^{(t)}=\frac{1}{|\mathcal{Q}_c^{(t)}|}
 \sum_{x\in\mathcal{Q}_c^{(t)}}f_\theta(x).
 \]
-For a new class, the persistent pool is empty before its first rebuild.  The
-current-task stream is retained until the boundary; after a class has a known
-quota, its persistent candidate pool is maintained with class-local bounded
-reservoir insertion.
+For each new classes, the persistent pool is empty before its first rebuild.  We
+retain the current-task stream until the boundary. Once a class has a known
+quota, we maintain its persistent candidate pool with class-local bounded reservoir
+insertion.
 
 Herding selects the active exemplars from $\mathcal{Q}_c^{(t)}$.  With
 $S_0=0$, the $k$-th exemplar is
@@ -85,33 +76,31 @@ the NME prototype is
 \hat\mu_c^{(t)}=\frac{1}{|\mathcal{E}_c^{(t)}|}
 \sum_{x\in\mathcal{E}_c^{(t)}}f_\theta(x).
 \]
-Uniform Herding applies this rebuild to every observed class after every task.
-After selection, the persistent candidate pool retains the selected items and
-bounded leftover candidates.  With the implementation default
-$\rho=\texttt{pool\_multiplier}=3$, a completed boundary has at most $\rho
-q_c^{(t)}$ candidates per class and at most $\rho M$ candidates in total in
-the reported setting.  This bound excludes the transient full stream of a
-class before its first rebuild.  Thus, $M$ is the active replay budget and
-$\rho M$ is the boundary candidate-storage bound; the method does not have a
-total storage budget of $M$.
+This rebuild runs for every observed class after every task.
+And after selection, the candidate pool keeps the selected items plus a bounded
+set of leftover candidates.  At the default
+$\rho=\texttt{pool\_multiplier}=3$, each task boundary stores at most $\rho
+q_c^{(t)}$ candidates per class and at most $\rho M$ in total in the reported runs.  This bound
+removes the transient full stream of a class before its first rebuild.
+$M$ is therefore the active replay budget and $\rho M$ is the boundary
+storage candidate bound. The method does not have a total storage budget of $M$.
 
-The candidate pool is a bounded implementation buffer, not a claim of uniform
-sampling over the entire historical stream.  Replay draws only from the
-selected sets.  The implementation uses the default $\rho=3$; this parameter
-was not independently swept.
+The candidate pool is a bounded buffer, not a claim of uniform sampling over
+the entire historical stream.  Replay draws only from the selected sets.  We use the
+default $\rho=3$ and did not sweep it.
 
 \subsection{Replay, Distillation, and Prediction}
 \label{subsec:replay-distillation}
 
-For $t=0$, training uses the current-task minibatches.  For $t\ge1$, each
-minibatch is augmented with $b$ selected exemplars sampled with replacement
-from previously observed classes.  Sampling is uniform over stored exemplar
-items rather than over classes, and retrieved raw images are re-augmented
-before concatenation.  The main configuration uses $M=2{,}000$ and $b=64$.
+At $t=0$, training uses only the current-task minibatches.  For $t\ge1$, each
+minibatch is augmented with $b$ exemplars drawn with replacement from
+earlier classes.  Sampling is uniform over stored items, not over classes.
+Retrieved raw images are re-augmented before concatenation.  We set
+$M=2{,}000$ and $b=64$.
 
-Uniform Herding optimizes cross-entropy on the expanded label space together
-with distillation on old classes.  A teacher is copied immediately before the
-head is expanded.  For $t\ge1$,
+The loss combines cross-entropy over the expanded label space with the distillation
+on old classes.  We copy a snapshot of the teacher just before expanding the head.
+For $t\ge1$,
 \[
 \begin{aligned}
 \mathcal{L}_t
@@ -127,9 +116,8 @@ p(x)
 \end{aligned}
 \]
 where $\tilde z$ is the student's logit vector after undoing the
-target-dependent cosine margin for the KD comparison.  The reported setting
-uses $\lambda=1$ and $T_{\mathrm{KD}}=2$; the distillation term is absent for
-$t=0$.
+target-dependent cosine margin for the KD comparison.  We set $\lambda=1$
+and $T_{\mathrm{KD}}=2$; at $t=0$ there is no distillation term.
 
 At evaluation, Uniform Herding uses nearest-mean exemplar prediction.  Given
 the final representation, the prediction is
@@ -137,39 +125,38 @@ the final representation, the prediction is
 \hat y(x)=\operatorname*{argmin}_{c\in\mathcal{C}_{T-1}}
 \left\|\bar f_\theta(x)-\bar{\hat\mu}_c^{(T-1)}\right\|_2.
 \]
-The head-logit rule is used for the designated ablation and for the static-bank
-baseline's native protocol.  The no-replay baseline has no replay readout.
+The head-logit rule is used in the respective ablation and in the
+static-bank baseline's own protocol.  The no-replay baseline has no exemplar
+readout.
 
 \subsection{Baselines and Supporting Analyses}
 \label{subsec:baselines-supporting}
 
-The faithful iCaRL baseline herds each new class once from its full current-task
+The iCaRL baseline herds each new class once from its full current-task
 pool, stores the prioritized order, and later keeps the prefix required by the
-new quota.  It does not re-herd old classes.  Its NME means are recomputed in
-the current feature space over the retained exemplars, and its transient
-current-task pool is discarded at the task boundary.  Training uses the
+new quota.  It does not re-herd old classes.  It recomputes NME means in
+the current feature space over the retained exemplars and discards the
+transient current task pool at the task boundary.  Training uses
 iCaRL-style sigmoid binary cross-entropy targets for old classes.
 
 The static-bank baseline uses random replacement within class pools, the same
 nominal active budget and retrieval count, and cross-entropy training with
-head-logit prediction.  At task boundaries, its persistent active store is
-capped at the nominal budget, unlike Uniform Herding's additional candidate
-pool.
+head-logit prediction.  At task boundaries, it attenuate its active store at
+the nominal budget, unlike Uniform Herding's additional candidate pool.
 
-The supporting Uniform Herding comparisons change one designated choice at a
-time: KD is removed, NME is replaced with head-logit prediction, the
-cosine-margin head is replaced with a linear head, or herding is replaced with
-random selection.  Resource sensitivity varies $M\in\{500,2000,4000\}$ and
-$b\in\{32,64,128\}$ around the main configuration.  T1 compares complete
-protocols.  Among the replay rows, nominal active and retrieval budgets match,
-but total retained storage, training objective, and readout do not; the
-no-replay baseline has neither replay storage nor retrieval.
+Every Uniform Herding ablation changes one choice at a time. We remove KD,
+swap NME for head-logit prediction, swap the cosine-margin head for a linear
+head, or swap herding for random selection.  Resource sweeps vary
+$M\in\{500,2000,4000\}$ and $b\in\{32,64,128\}$ around the default.  T1
+compares full protocols.  Among the replay rows, nominal active and retrieval
+budgets match, but total retained storage, training objective, and readout
+differ. The no-replay baseline has neither replay storage nor retrieval.
 
 \subsection{Evaluation Metrics}
 \label{subsec:evaluation-metrics}
 
-After each task $i$, the model is evaluated separately on every task
-$j\le i$, yielding an accuracy matrix $R$.  Final average accuracy is
+After each task $i$, we evaluate separately on every task $j\le i$, producing an
+accuracy matrix $R$.  Final average accuracy is
 \[
 \mathrm{ACC}=\frac{1}{T}\sum_{j=0}^{T-1}R_{T-1,j}.
 \]
@@ -184,6 +171,6 @@ Backward transfer is
 \mathrm{BWT}=\frac{1}{T-1}\sum_{j=0}^{T-2}
 \left(R_{T-1,j}-R_{j,j}\right).
 \]
-All scalar metrics are reported as the mean and population standard deviation
-over the three seeds.  For supporting and sensitivity rows, deltas are
-computed per seed against the matched Uniform Herding run before averaging.
+We report all scalar metrics as the mean and population standard deviation
+over the three seeds.  For ablation and sensitivity rows, we compute deltas
+per seed against the matched Uniform Herding run before averaging.

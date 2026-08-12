@@ -201,28 +201,18 @@
 \makeatother
 
 \title{Uniform Herding: Exemplar Replay with Representation Refresh}
-\author{}
+\author{Krishna Subedi \\ \texttt{krishna.subedi@neryva.com}}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-Replay must preserve prior classes as the feature representation changes, while
-only a bounded active exemplar set can be replayed.  We propose Uniform
-Herding, which allocates this active set across observed classes and refreshes
-their selected exemplars in the current representation using a bounded
-candidate pool.  On CIFAR-100 with ten class-incremental tasks, a ResNet-18
+  As the feature representation changes, replay must preserve the earlier classes. However, only a bounded active exemplar set can be replayed.  We propose Uniform Herding, which allocates the current active set through observed classes and uses an unbounded candidate pool to refresh their chosen exemplars in the current representation.  On CIFAR-100 with ten class-incremental tasks, a ResNet-18
 backbone, active budget $M=2{,}000$, retrieval budget $b=64$, and three seeds,
 Uniform Herding obtains $44.00\pm0.51\%$ final average accuracy and
 $17.22\pm0.43\%$ forgetting, compared with $42.33\pm1.20\%$ and
-$24.87\pm1.11\%$ for iCaRL.  Within the Uniform Herding protocol, replacing NME
-or herding with the tested alternatives lowers mean final accuracy, while
-removing distillation primarily increases forgetting.  Over the tested
-resource range, changing the active budget has a larger effect than changing
-the retrieval budget.  These results are conditional on the evaluated
-protocol: the iCaRL comparison is end-to-end and does not isolate refresh from
-its other protocol differences.
+$24.87\pm1.11\%$ for iCaRL.  Within the Uniform Herding protocol, the final accuracy was decreased when NME or herding was replaced with tested alternatives, but the forgetting was increased when distillation was removed. Changing the retrieval budget has a lower effect across the tested range than changing the active one. The comparison with iCaRL is an end-to-end one; a single refresh effect is not isolated from all the others, and its protocol differs a lot. These results are limited to the tested protocol.
 \end{abstract}
 
 \input{sections/introduction/introduction.tex}
